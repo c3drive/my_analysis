@@ -19,4 +19,5 @@ tasks:
   # Goの実行
   run:
     cmds:
-      - go run main.go
+  # CLI引数をそのまま go run に渡すための記法
+      - go run main.go {{.CLI_ARGS}}

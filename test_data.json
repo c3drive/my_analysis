@@ -1,0 +1,26 @@
+{
+  "metadata": { "status": "200" },
+  "results": [
+    {
+      "docID": "S100TEST01",
+      "filerName": "影武者ホールディングス",
+      "secCode": "11110",
+      "docDescription": "有価証券報告書",
+      "submissionDateTime": "2025-12-25 10:00"
+    },
+    {
+      "docID": "S100TEST02",
+      "filerName": "モックソフトウェア",
+      "secCode": "22220",
+      "docDescription": "四半期報告書",
+      "submissionDateTime": "2025-12-25 11:00"
+    },
+    {
+      "docID": "S100TEST03",
+      "filerName": "非上場商事",
+      "secCode": "",
+      "docDescription": "臨時報告書",
+      "submissionDateTime": "2025-12-25 12:00"
+    }
+  ]
+}
