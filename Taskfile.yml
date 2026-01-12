@@ -1,0 +1,22 @@
+version: '3'
+
+tasks:
+  # 疎通確認用
+  hello:
+    cmds:
+      - echo "Hello from Docker with mise & Go!"
+      - go version
+      - node --version
+      - task --version
+
+  # Goの初期セットアップ（最初の一回だけ実行）
+  init:
+    cmds:
+      - go mod init stock-analyzer || echo "go.mod already exists"
+      - go get modernc.org/sqlite
+      - mkdir -p data
+
+  # Goの実行
+  run:
+    cmds:
+      - go run main.go
