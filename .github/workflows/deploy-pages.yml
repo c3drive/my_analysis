@@ -1,49 +1,50 @@
-name: Deploy to GitHub Pages
+name: Deploy GitHub Pages
 
 on:
   push:
-    branches: [ main ]
-    paths:
-      - 'web/**'
-      - '.github/workflows/deploy-pages.yml'
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # DB生成とデプロイのために必要
   pages: write
   id-token: write
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-      
-      - name: Get latest DB URL
-        id: db-url
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Generate Database
         run: |
-          LATEST_RELEASE=$(gh release view latest --json tagName -q .tagName)
-          DB_URL="https://github.com/${{ github.repository }}/releases/download/${LATEST_RELEASE}/stock_data.db.gz"
-          echo "db_url=$DB_URL" >> $GITHUB_OUTPUT
+          mkdir -p data
+          # 暫定的に2025-11-13のデータを取得してDBを生成
+          go run main.go -mode=run -date=2025-11-13
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Update HTML with DB URL
+          EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
+
+      - name: Prepare Public Assets
         run: |
-          # HTMLファイル内のプレースホルダーをDB URLで置換
-          find web -name "*.html" -type f -exec sed -i '' \
-            "s|DB_URL_PLACEHOLDER|${{ steps.db-url.outputs.db_url }}|g" {} +
-      
+          mkdir -p public
+          # web/ 内のHTML/JSをコピー
+          cp -r web/* public/
+          # 生成されたDBを直接publicに配置（これでReleaseなしでも動く）
+          if [ -f data/stock_data.db ]; then
+            cp data/stock_data.db public/
+          fi
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './web'
-      
+          path: './public'
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
