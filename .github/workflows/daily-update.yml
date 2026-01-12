@@ -13,16 +13,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          lfs: true  # Git LFS使う場合
       
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
           go-version: '1.23'
-      
-      - name: Setup mise
-        uses: jdx/mise-action@v2
       
       - name: Install dependencies
         run: |
@@ -32,17 +27,27 @@ jobs:
       - name: Download latest SQLite DB (if exists)
         continue-on-error: true
         run: |
-          # 前回のリリースからDBをダウンロード
-          gh release download latest -p "stock_data.db.gz" -D data/ || echo "No previous DB found"
-          if [ -f data/stock_data.db.gz ]; then
-            gunzip data/stock_data.db.gz
+          # GitHub APIで最新リリースを取得
+          LATEST_TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.tag_name')
+          
+          if [ "$LATEST_TAG" != "null" ] && [ "$LATEST_TAG" != "" ]; then
+            echo "📥 Found latest release: $LATEST_TAG"
+            curl -L -o data/stock_data.db.gz \
+              "https://github.com/${{ github.repository }}/releases/download/$LATEST_TAG/stock_data.db.gz" \
+              || echo "⚠️ Download failed, starting fresh"
+            
+            if [ -f data/stock_data.db.gz ]; then
+              gunzip data/stock_data.db.gz
+              echo "✅ Database restored from previous release"
+            fi
+          else
+            echo "ℹ️ No previous release found, starting fresh"
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Fetch and parse EDINET data
         run: |
           TODAY=$(date -u +%Y-%m-%d)
+          echo "🚀 Fetching data for: $TODAY"
           go run main.go -mode=run -date=$TODAY
         env:
           EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
@@ -50,13 +55,16 @@ jobs:
       - name: Compress database
         run: |
           gzip -c data/stock_data.db > data/stock_data.db.gz
+          echo "📦 Database compressed"
       
-      - name: Generate presigned link (local file path)
+      - name: Generate release info
         id: db-info
         run: |
-          DB_SIZE=$(stat -f%z data/stock_data.db.gz)
+          DB_SIZE=$(stat -c%s data/stock_data.db.gz)
+          DATE=$(date -u +%Y-%m-%d)
           echo "db_size=$DB_SIZE" >> $GITHUB_OUTPUT
-          echo "date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+          echo "📊 Database size: $(numfmt --to=iec-i --suffix=B $DB_SIZE)"
       
       - name: Create GitHub Release
         id: create_release
@@ -67,11 +75,14 @@ jobs:
           body: |
             📊 Daily stock data update
             
-            🗄️ Database size: ${{ steps.db-info.outputs.db_size }} bytes
+            🗄️ Database size: $(numfmt --to=iec-i --suffix=B ${{ steps.db-info.outputs.db_size }})
             📅 Updated: ${{ steps.db-info.outputs.date }}
             
             **Download:**
-            - [stock_data.db.gz](https://github.com/${{ github.repository }}/releases/download/data-${{ steps.db-info.outputs.date }}/stock_data.db.gz)
+            ```bash
+            wget https://github.com/${{ github.repository }}/releases/download/data-${{ steps.db-info.outputs.date }}/stock_data.db.gz
+            gunzip stock_data.db.gz
+            ```
             
             **Web Dashboard:**
             - [View Analysis](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }})
@@ -83,11 +94,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Update latest tag
+        continue-on-error: true
         run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
           git tag -f latest
           git push origin latest --force
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Create issue on failure
         if: failure()
