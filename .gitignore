@@ -9,7 +9,6 @@ stock-analyzer
 
 # Go dependencies
 vendor/
-go.sum
 
 # IDE / Editor
 .vscode/
