@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     build-essential \
     sqlite3 \
+    bc \
     && rm -rf /var/lib/apt/lists/*
 
 # miseのインストール

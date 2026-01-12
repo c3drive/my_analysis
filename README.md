@@ -1,92 +1,224 @@
 # EDINET XBRL Analyzer
 
-EDINET APIから上場企業の決算データを取得し、XBRLファイルを解析して売上高を抽出・可視化するシステム。
+EDINET APIから上場企業の決算データを取得し、XBRLファイルを解析して財務分析を行うシステム。
 
 ## 🚀 機能
-- **Data Collection**: EDINET APIから書類一覧を取得し、XBRLをメモリ上で解析。
-- **Automated Parsing**: 正規表現を用いた売上高（NetSales/OperatingRevenues）の自動抽出。
-- **Dashboard**: 抽出したデータをSQLiteに保存し、Webブラウザで可視化。
-- **CI/CD**: GitHub Actionsによる自動ビルドとモックデータによる動作検証。
 
+- **自動データ収集**: GitHub Actionsで毎日18時（JST）に自動実行
+- **XBRL解析**: 売上高・EPS・純資産などの財務データを抽出
+- **静的Web分析**: ブラウザ上でSQLiteを直接解析（サーバーレス）
+- **複数の分析手法**: ネットネットバリュー、オニールスクリーニング、マーケット天井検出
 
-## 🛠 使用ツールと構成カテゴリツール / 構成備考環境管理miseDocker内でPython/カテゴリ,技術,備考
-Runtime,Go 1.23,財務データの高速パースと低メモリ実行のため採用
-Database,SQLite 3,modernc.org/sqlite (Pure Go) を使用しCGOを排除
-Tool Manager,mise,"コンテナ内のGo, Node.js, Taskのバージョンを厳密に管理"
-Task Runner,go-task,Taskfile.yml による共通コマンドの定義
-Infrastructure,GitHub Actions,日次バッチ実行と成果物(DB)の自動Push
-Environment,Docker,ubuntu:24.04 ベースのクリーンな開発環境
+## 📊 アーキテクチャ
+
+```
+┌─────────────────────────────────────────────────┐
+│          GitHub Actions (日次バッチ)              │
+│  ┌─────────────────────────────────────────┐   │
+│  │ 1. EDINET APIからデータ取得              │   │
+│  │ 2. XBRLファイルをパース                  │   │
+│  │ 3. SQLiteに保存                          │   │
+│  │ 4. gzip圧縮                              │   │
+│  │ 5. GitHub Releasesにアップロード         │   │
+│  └─────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────┘
+                        │
+                        ▼
+         ┌──────────────────────────┐
+         │   GitHub Releases         │
+         │  stock_data.db.gz         │
+         │  (永続保存)               │
+         └──────────────────────────┘
+                        │
+                        ▼
+         ┌──────────────────────────┐
+         │    GitHub Pages           │
+         │  静的HTML + sqlite-wasm   │
+         │  ブラウザでDB解析         │
+         └──────────────────────────┘
+```
+
+## 🛠 技術スタック
+
+| カテゴリ | 技術 | 備考 |
+|---------|------|------|
+| Runtime | Go 1.23 | 高速パース・低メモリ実行 |
+| Database | SQLite 3 | Pure Go実装（CGO不要） |
+| Task Runner | go-task | Taskfile.yml |
+| CI/CD | GitHub Actions | 日次バッチ + Pages デプロイ |
+| Storage | GitHub Releases | DBファイルの永続保存 |
+| Frontend | sqlite-wasm | ブラウザ内でDB解析 |
 
 ## 📂 ディレクトリ構造
+
+```
 .
-├── .mise.toml         # ツールのバージョン定義
-├── Dockerfile         # mise/Go環境を内蔵したビルド定義
-├── docker-compose.yml # 開発コンテナの起動定義
-├── Taskfile.yml       # プロジェクト用コマンド集
-├── main.go            # データ収集エンジンのメインロジック
-├── data/              # SQLiteデータベース保存先
-│   └── stock_data.db  # 生成されたデータベースファイル
-└── README.md          # 本ドキュメント
+├── .github/
+│   └── workflows/
+│       ├── daily-update.yml      # 日次データ更新
+│       └── deploy-pages.yml      # GitHub Pages デプロイ
+├── data/
+│   ├── raw/                      # 生XBRLファイル
+│   ├── stock_data.db             # SQLiteデータベース
+│   └── stock_data.db.gz          # 圧縮版（配信用）
+├── web/
+│   ├── index.html                # メインダッシュボード
+│   ├── net-net-value.html        # ネットネット分析
+│   ├── oneil-screen.html         # オニールスクリーニング
+│   └── market-top.html           # マーケット天井検出
+├── scripts/
+│   └── compress_db.sh            # DB圧縮スクリプト
+├── main.go                       # メインロジック
+├── Taskfile.yml                  # タスク定義
+└── README.md
+```
 
 ## 🛠 実行手順
 
-### 1. イメージのビルド
+### 1. 初期セットアップ
+
 ```bash
+# イメージのビルド
 docker compose build
-```
 
-### 2. 疎通確認（Go/Node/Taskのバージョン確認）
-```bash
-docker compose run --rm app task hello
-```
-
-### 3. Goの依存関係とSQLiteドライバーの初期化（初回のみ）
-```bash
+# 依存関係のインストール
 docker compose run --rm app task init
 ```
 
-### 4. データベースの初期化・実行
+### 2. ローカルでのデータ収集
+
 ```bash
-docker compose run --rm app task run
+# 特定日のデータを取得
+docker compose run --rm app task run -- -mode=run -date=2025-11-13
+
+# または日次更新シミュレーション
+docker compose run --rm app task daily-update
 ```
 
-### 5. データの収集 (Run Mode)
+### 3. ダッシュボードの起動
+
 ```bash
-docker compose run --rm app go run main.go -mode=run -date=2025-11-13
+docker compose run --rm -p 8080:8080 app task serve
 ```
-### 6. ダッシュボードの起動 (Serve Mode)
-```bash
-docker compose run --rm -p 8080:8080 app go run main.go -mode=serve
-```
+
 アクセス: `http://localhost:8080`
 
-### 7. ローカルファイルのテスト解析 (Test-Parse Mode)
+### 4. テスト解析
+
 ```bash
-docker compose run --rm app go run main.go -mode=test-parse
+docker compose run --rm app task test-parse
 ```
 
-## 📝 開発時の注意点（Tips）
-`mise` はコンテナ内で `/root/.local/bin/mise` に配置されている。
+## 🌐 GitHub Pages での公開
 
-プロジェクトルートの `.mise.toml` は `MISE_TRUSTED_CONFIG_PATHS` によって自動的に信頼される設定となっている。
+### 設定手順
 
-##⚡ トラブルシューティング
-ポート 8080 が塞がっている場合
-`Bind for 0.0.0.0:8080 failed: port is already allocated` というエラーが出た際の対処法。
+1. **GitHub Secretsの設定**
+   - リポジトリの Settings → Secrets and variables → Actions
+   - `EDINET_API_KEY` を追加
 
-占拠しているプロセスを特定して排除する
+2. **GitHub Pages の有効化**
+   - Settings → Pages
+   - Source: "GitHub Actions" を選択
+
+3. **自動デプロイの確認**
+   - `web/` ディレクトリを更新してpush
+   - Actions タブで進行状況を確認
+
+### アクセスURL
+
+```
+https://<username>.github.io/<repository-name>/
+```
+
+## 📝 利用可能なタスク
+
+```bash
+# 基本操作
+task hello          # 疎通確認
+task init           # 初期セットアップ
+task run            # データ収集
+task serve          # Webサーバー起動
+
+# 高度な操作
+task daily-update   # 日次更新シミュレーション
+task compress       # DBの圧縮
+task build-web      # Web資産のビルド
+task clean          # データベースのクリーンアップ
+```
+
+## 🔧 開発環境
+
+### 必要なツール
+
+- Docker Desktop
+- Git
+
+### 環境変数
+
+```bash
+# .envファイルを作成
+EDINET_API_KEY=your_api_key_here
+```
+
+## 📈 今後の実装予定
+
+### Phase 1: データ層の強化
+- [ ] 株価データの取得と保存
+- [ ] EPS・純資産の抽出
+- [ ] 決算発表日の記録
+
+### Phase 2: 分析機能
+- [ ] ネットネットバリュー計算
+- [ ] オニール成長株スクリーニング
+- [ ] マーケット天井検出ロジック
+
+### Phase 3: UI改善
+- [ ] インタラクティブなチャート
+- [ ] フィルタリング機能
+- [ ] レスポンシブデザイン
+
+### Phase 4: 通知機能
+- [ ] 新規銘柄の自動検出
+- [ ] GitHub Issue での通知
+- [ ] 条件達成時のアラート
+
+## ⚡ トラブルシューティング
+
+### ポート競合
+
 ```bash
 # 8080ポートを使用中のプロセスを確認
 lsof -i :8080
 
-# 特定したPID（プロセスID）を強制終了
+# プロセスを停止
 kill -9 <PID>
-
-# または、Dockerの全コンテナを停止させる
-docker stop $(docker ps -q)
 ```
 
-## 📈 今後の強化予定 (Roadmap)
-- [ ] 指標の追加: 純利益（NetIncome）や純資産（NetAssets）の抽出対応。
-- [ ] 一括処理: 複数日のデータを一括で取得するスクリプトの実装。
-- [ ] 可視化強化: グラフライブラリを用いた売上高ランキングの表示。
+### GitHub Actions の失敗
+
+1. Actions タブで詳細ログを確認
+2. Secretsが正しく設定されているか確認
+3. 自動作成されたIssueを確認
+
+### データベースが壊れた場合
+
+```bash
+# データベースを削除して再構築
+task clean
+task daily-update
+```
+
+## 📚 参考資料
+
+- [EDINET API仕様書](https://disclosure2.edinet-fsa.go.jp/)
+- [SQLite WASM Documentation](https://sqlite.org/wasm/)
+- [GitHub Actions Documentation](https://docs.github.com/actions)
+
+## 📄 ライセンス
+
+MIT License
+
+## 🙏 謝辞
+
+本プロジェクトは [kawasin73氏のブログ記事](https://kawasin73.hatenablog.com/entry/2025/11/20/224346) を参考にして開発されたわ。

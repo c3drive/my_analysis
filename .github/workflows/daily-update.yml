@@ -1,0 +1,103 @@
+name: Daily Stock Data Update
+
+on:
+  schedule:
+    # 毎日 18:00 JST (09:00 UTC) に実行
+    - cron: "0 9 * * *"
+  workflow_dispatch: # 手動実行も可能
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true  # Git LFS使う場合
+      
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+      
+      - name: Setup mise
+        uses: jdx/mise-action@v2
+      
+      - name: Install dependencies
+        run: |
+          go mod download
+          mkdir -p data/raw
+      
+      - name: Download latest SQLite DB (if exists)
+        continue-on-error: true
+        run: |
+          # 前回のリリースからDBをダウンロード
+          gh release download latest -p "stock_data.db.gz" -D data/ || echo "No previous DB found"
+          if [ -f data/stock_data.db.gz ]; then
+            gunzip data/stock_data.db.gz
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Fetch and parse EDINET data
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          go run main.go -mode=run -date=$TODAY
+        env:
+          EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
+      
+      - name: Compress database
+        run: |
+          gzip -c data/stock_data.db > data/stock_data.db.gz
+      
+      - name: Generate presigned link (local file path)
+        id: db-info
+        run: |
+          DB_SIZE=$(stat -f%z data/stock_data.db.gz)
+          echo "db_size=$DB_SIZE" >> $GITHUB_OUTPUT
+          echo "date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+      
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: data-${{ steps.db-info.outputs.date }}
+          name: Stock Data - ${{ steps.db-info.outputs.date }}
+          body: |
+            📊 Daily stock data update
+            
+            🗄️ Database size: ${{ steps.db-info.outputs.db_size }} bytes
+            📅 Updated: ${{ steps.db-info.outputs.date }}
+            
+            **Download:**
+            - [stock_data.db.gz](https://github.com/${{ github.repository }}/releases/download/data-${{ steps.db-info.outputs.date }}/stock_data.db.gz)
+            
+            **Web Dashboard:**
+            - [View Analysis](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }})
+          files: |
+            data/stock_data.db.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Update latest tag
+        run: |
+          git tag -f latest
+          git push origin latest --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '⚠️ Daily update failed - ' + new Date().toISOString().split('T')[0],
+              body: 'The daily stock data update workflow has failed. Please check the [workflow run](' + context.payload.repository.html_url + '/actions/runs/' + context.runId + ').',
+              labels: ['automation', 'bug']
+            });

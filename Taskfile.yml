@@ -14,10 +14,46 @@ tasks:
     cmds:
       - go mod init stock-analyzer || echo "go.mod already exists"
       - go get modernc.org/sqlite
-      - mkdir -p data
+      - mkdir -p data data/raw web scripts
 
   # Goの実行
   run:
     cmds:
-  # CLI引数をそのまま go run に渡すための記法
       - go run main.go {{.CLI_ARGS}}
+
+  # データベースの圧縮
+  compress:
+    cmds:
+      - chmod +x scripts/compress_db.sh
+      - ./scripts/compress_db.sh
+
+  # ローカルでのWebサーバー起動
+  serve:
+    cmds:
+      - go run main.go -mode=serve
+
+  # テストパース実行
+  test-parse:
+    cmds:
+      - go run main.go -mode=test-parse
+
+  # 日次更新シミュレーション
+  daily-update:
+    cmds:
+      - echo "🚀 Starting daily update simulation..."
+      - go run main.go -mode=run -date={{.DATE | default "2025-11-13"}}
+      - task: compress
+      - echo "✅ Daily update completed"
+
+  # GitHub Pages 用の静的ファイル生成
+  build-web:
+    cmds:
+      - echo "🌐 Building web assets..."
+      - task: compress
+      - echo "✅ Web assets ready in web/"
+
+  # クリーンアップ
+  clean:
+    cmds:
+      - rm -f data/stock_data.db data/stock_data.db.gz
+      - echo "🧹 Cleaned database files"
