@@ -9,7 +9,12 @@ on:
 jobs:
   update-data:
     runs-on: ubuntu-latest
-    
+
+    permissions:
+      contents: write    # リリースの作成とタグの更新に必要
+      issues: write      # 失敗時のIssue作成に必要
+      pull-requests: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
