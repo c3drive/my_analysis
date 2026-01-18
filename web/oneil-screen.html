@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>オニールスクリーニング | 株式分析ダッシュボード</title>
+    <meta name="description" content="ウィリアム・オニールのCAN-SLIM手法に基づく成長株スクリーニング。EPS成長率と売上成長率で銘柄を評価。">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        h1 {
+            font-size: 2rem;
+            background: linear-gradient(135deg, #ff6b6b, #ffd93d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #a0a0a0;
+            font-size: 1rem;
+        }
+
+        .nav {
+            display: flex;
+            gap: 10px;
+            margin: 25px 0 0 0;
+            flex-wrap: wrap;
+        }
+
+        .nav a {
+            color: #00d9ff;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: rgba(255, 107, 107, 0.2);
+            border-color: #ff6b6b;
+            box-shadow: 0 0 20px rgba(255, 107, 107, 0.3);
+        }
+
+        .nav a.active {
+            color: #ff6b6b;
+        }
+
+        .info-box {
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid rgba(255, 107, 107, 0.3);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        .info-box h2 {
+            color: #ff6b6b;
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+        }
+
+        .info-box p {
+            line-height: 1.8;
+            color: #b0b0b0;
+        }
+
+        .canslim-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .canslim-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .canslim-item .letter {
+            font-size: 2rem;
+            font-weight: bold;
+            background: linear-gradient(135deg, #ff6b6b, #ffd93d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .canslim-item .meaning {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 30px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .status-label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 5px;
+        }
+
+        .status-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #ff6b6b;
+        }
+
+        .coming-soon {
+            text-align: center;
+            padding: 80px 40px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+            border: 2px dashed rgba(255, 255, 255, 0.1);
+        }
+
+        .coming-soon-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+
+        .coming-soon h3 {
+            font-size: 1.5rem;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .coming-soon p {
+            color: #555;
+            max-width: 500px;
+            margin: 0 auto;
+            line-height: 1.8;
+        }
+
+        .requirements {
+            margin-top: 30px;
+            text-align: left;
+            display: inline-block;
+        }
+
+        .requirements h4 {
+            color: #888;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
+
+        .requirements ul {
+            list-style: none;
+        }
+
+        .requirements li {
+            padding: 8px 0;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .requirements li::before {
+            content: '○';
+            color: #444;
+        }
+
+        .requirements li.done::before {
+            content: '✓';
+            color: #00ff88;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 オニールスクリーニング</h1>
+            <p class="subtitle">CAN-SLIM手法による成長株発掘</p>
+
+            <nav class="nav">
+                <a href="index.html">📊 基本ダッシュボード</a>
+                <a href="net-net-value.html">💎 ネットネット分析</a>
+                <a href="oneil-screen.html" class="active">🚀 オニールスクリーニング</a>
+                <a href="market-top.html">📈 マーケット天井検出</a>
+            </nav>
+        </header>
+
+        <div class="info-box">
+            <h2>📖 CAN-SLIM手法とは？</h2>
+            <p>
+                ウィリアム・オニールが開発した成長株投資手法です。
+                7つの要素の頭文字を取って「CAN-SLIM」と呼ばれます。
+                特にEPS（1株当たり利益）の成長率を重視し、
+                四半期で25%以上、年間で20%以上の成長を求めます。
+            </p>
+
+            <div class="canslim-grid">
+                <div class="canslim-item">
+                    <div class="letter">C</div>
+                    <div class="meaning">Current Earnings<br>当期利益</div>
+                </div>
+                <div class="canslim-item">
+                    <div class="letter">A</div>
+                    <div class="meaning">Annual Earnings<br>年間利益成長</div>
+                </div>
+                <div class="canslim-item">
+                    <div class="letter">N</div>
+                    <div class="meaning">New Products<br>新製品・新経営</div>
+                </div>
+                <div class="canslim-item">
+                    <div class="letter">S</div>
+                    <div class="meaning">Supply & Demand<br>需給</div>
+                </div>
+                <div class="canslim-item">
+                    <div class="letter">L</div>
+                    <div class="meaning">Leader or Laggard<br>業界リーダー</div>
+                </div>
+                <div class="canslim-item">
+                    <div class="letter">I</div>
+                    <div class="meaning">Institutional<br>機関投資家</div>
+                </div>
+                <div class="canslim-item">
+                    <div class="letter">M</div>
+                    <div class="meaning">Market Direction<br>市場動向</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-label">機能ステータス</span>
+                <span class="status-value" style="color: #ffa500;">🔧 開発中</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">必要データ</span>
+                <span class="status-value" style="color: #888;">EPS・売上・株価</span>
+            </div>
+        </div>
+
+        <div class="coming-soon">
+            <div class="coming-soon-icon">🚧</div>
+            <h3>この機能は現在開発中です</h3>
+            <p>
+                オニールスクリーニング機能を利用するには、
+                複数四半期のEPSデータと売上データの取得が必要です。
+            </p>
+
+            <div class="requirements">
+                <h4>実装に必要な項目:</h4>
+                <ul>
+                    <li class="done">EDINET APIからの書類取得</li>
+                    <li class="done">XBRLパース基盤</li>
+                    <li class="done">売上高（NetSales）の抽出</li>
+                    <li>EPS（EarningsPerShare）の抽出</li>
+                    <li>過去4四半期のEPSデータ蓄積</li>
+                    <li>EPS成長率の計算ロジック</li>
+                    <li>売上成長率の計算ロジック</li>
+                    <li>ランキング・フィルタリング機能</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

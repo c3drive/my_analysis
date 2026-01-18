@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # DB生成とデプロイのために必要
+  contents: write
   pages: write
   id-token: write
 
@@ -20,25 +20,70 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.23'
 
       - name: Generate Database
         run: |
           mkdir -p data
-          # 暫定的に2025-11-13のデータを取得してDBを生成
           go run main.go -mode=run -date=2025-11-13
         env:
           EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
 
+      - name: Generate JSON for GitHub Pages
+        run: |
+          # SQLiteからJSONを直接生成
+          go run -mod=mod - <<'EOF'
+          package main
+
+          import (
+              "database/sql"
+              "encoding/json"
+              "fmt"
+              "os"
+              _ "modernc.org/sqlite"
+          )
+
+          type Stock struct {
+              Code      string `json:"Code"`
+              Name      string `json:"Name"`
+              NetSales  int64  `json:"NetSales"`
+              UpdatedAt string `json:"UpdatedAt"`
+          }
+
+          func main() {
+              db, err := sql.Open("sqlite", "./data/stock_data.db")
+              if err != nil {
+                  fmt.Println("DB open error:", err)
+                  os.Exit(1)
+              }
+              defer db.Close()
+
+              rows, err := db.Query("SELECT code, name, COALESCE(net_sales, 0), COALESCE(updated_at, '') FROM stocks ORDER BY code ASC")
+              if err != nil {
+                  fmt.Println("Query error:", err)
+                  os.Exit(1)
+              }
+              defer rows.Close()
+
+              var stocks []Stock
+              for rows.Next() {
+                  var s Stock
+                  rows.Scan(&s.Code, &s.Name, &s.NetSales, &s.UpdatedAt)
+                  stocks = append(stocks, s)
+              }
+
+              jsonData, _ := json.MarshalIndent(stocks, "", "  ")
+              os.WriteFile("./web/stocks.json", jsonData, 0644)
+              fmt.Printf("Generated stocks.json with %d records\n", len(stocks))
+          }
+          EOF
+
       - name: Prepare Public Assets
         run: |
           mkdir -p public
-          # web/ 内のHTML/JSをコピー
           cp -r web/* public/
-          # 生成されたDBを直接publicに配置（これでReleaseなしでも動く）
-          if [ -f data/stock_data.db ]; then
-            cp data/stock_data.db public/
-          fi
+          echo "📁 Contents of public/:"
+          ls -la public/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

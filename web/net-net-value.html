@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ネットネット分析 | 株式分析ダッシュボード</title>
+    <meta name="description" content="ベンジャミン・グレアム流ネットネットバリュー分析。流動資産から負債を引いた正味流動資産価値で割安株を発見。">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        h1 {
+            font-size: 2rem;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #a0a0a0;
+            font-size: 1rem;
+        }
+
+        .nav {
+            display: flex;
+            gap: 10px;
+            margin: 25px 0 0 0;
+            flex-wrap: wrap;
+        }
+
+        .nav a {
+            color: #00d9ff;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: #00d9ff;
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+        }
+
+        .info-box {
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        .info-box h2 {
+            color: #00d9ff;
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+        }
+
+        .info-box p {
+            line-height: 1.8;
+            color: #b0b0b0;
+        }
+
+        .formula {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            color: #00ff88;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 30px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .status-label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 5px;
+        }
+
+        .status-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .coming-soon {
+            text-align: center;
+            padding: 80px 40px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+            border: 2px dashed rgba(255, 255, 255, 0.1);
+        }
+
+        .coming-soon-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+
+        .coming-soon h3 {
+            font-size: 1.5rem;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .coming-soon p {
+            color: #555;
+            max-width: 500px;
+            margin: 0 auto;
+            line-height: 1.8;
+        }
+
+        .requirements {
+            margin-top: 30px;
+            text-align: left;
+            display: inline-block;
+        }
+
+        .requirements h4 {
+            color: #888;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
+
+        .requirements ul {
+            list-style: none;
+        }
+
+        .requirements li {
+            padding: 8px 0;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .requirements li::before {
+            content: '○';
+            color: #444;
+        }
+
+        .requirements li.done::before {
+            content: '✓';
+            color: #00ff88;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>💎 ネットネット分析</h1>
+            <p class="subtitle">ベンジャミン・グレアム流バリュー投資スクリーニング</p>
+
+            <nav class="nav">
+                <a href="index.html">📊 基本ダッシュボード</a>
+                <a href="net-net-value.html" class="active">💎 ネットネット分析</a>
+                <a href="oneil-screen.html">🚀 オニールスクリーニング</a>
+                <a href="market-top.html">📈 マーケット天井検出</a>
+            </nav>
+        </header>
+
+        <div class="info-box">
+            <h2>📖 ネットネットバリューとは？</h2>
+            <p>
+                ベンジャミン・グレアムが提唱した割安株の発見手法です。
+                企業の流動資産から総負債を差し引いた「正味流動資産価値（NCAV）」が、
+                時価総額を上回る銘柄を探します。
+            </p>
+            <div class="formula">
+                ネットネットバリュー = (流動資産 − 総負債) ÷ 発行済株式数
+            </div>
+            <p>
+                この値が現在の株価を上回っている場合、その株は「タダより安い」と言えます。
+                ただし、必ずしも割安 ＝ 優良ではないため、業績トレンドと合わせて判断が必要です。
+            </p>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-label">機能ステータス</span>
+                <span class="status-value" style="color: #ffa500;">🔧 開発中</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">必要データ</span>
+                <span class="status-value" style="color: #888;">流動資産・負債・株価</span>
+            </div>
+        </div>
+
+        <div class="coming-soon">
+            <div class="coming-soon-icon">🚧</div>
+            <h3>この機能は現在開発中です</h3>
+            <p>
+                ネットネット分析機能を利用するには、追加のデータ取得と計算ロジックの実装が必要です。
+            </p>
+
+            <div class="requirements">
+                <h4>実装に必要な項目:</h4>
+                <ul>
+                    <li class="done">EDINET APIからの書類取得</li>
+                    <li class="done">XBRLパース基盤</li>
+                    <li>流動資産（CurrentAssets）の抽出</li>
+                    <li>流動負債（CurrentLiabilities）の抽出</li>
+                    <li>総負債（TotalLiabilities）の抽出</li>
+                    <li>株価データの取得</li>
+                    <li>発行済株式数の取得</li>
+                    <li>ネットネット計算ロジック</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
