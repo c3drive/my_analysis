@@ -160,6 +160,15 @@ func saveStock(db *sql.DB, code, name, updatedAt string, data FinancialData) err
 
 // --- 閲覧ロジック ---
 func startServer() {
+	// DBマイグレーション実行（新しいカラムを追加）
+	migrateDB, err := initDB()
+	if err != nil {
+		log.Printf("⚠️ DB migration warning: %v", err)
+	} else {
+		migrateDB.Close()
+		log.Println("✅ Database schema migrated successfully")
+	}
+
 	fs := http.FileServer(http.Dir("./web"))
 	http.Handle("/", fs)
 

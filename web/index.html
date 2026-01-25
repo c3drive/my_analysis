@@ -256,6 +256,122 @@
         .table-wrapper::-webkit-scrollbar-thumb:hover {
             background: rgba(0, 217, 255, 0.5);
         }
+
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding-right: 25px;
+        }
+
+        .sortable:hover {
+            background: rgba(0, 217, 255, 0.1);
+        }
+
+        .sortable::after {
+            content: '↕';
+            position: absolute;
+            right: 8px;
+            opacity: 0.3;
+        }
+
+        .sortable.asc::after {
+            content: '↑';
+            opacity: 1;
+        }
+
+        .sortable.desc::after {
+            content: '↓';
+            opacity: 1;
+        }
+
+        .positive {
+            color: #00ff88;
+        }
+
+        .negative {
+            color: #ff6b6b;
+        }
+
+        .zero {
+            color: #666;
+        }
+
+        .table-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 8px;
+            padding: 10px 15px;
+            color: #e0e0e0;
+            font-size: 0.9rem;
+            width: 280px;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #00d9ff;
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+        }
+
+        .search-input::placeholder {
+            color: #666;
+        }
+
+        .filter-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #888;
+            font-size: 0.85rem;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .filter-toggle input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #00d9ff;
+            cursor: pointer;
+        }
+
+        .filter-toggle:hover {
+            color: #00d9ff;
+        }
+
+        .export-btn {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: 8px;
+            padding: 8px 16px;
+            color: #00ff88;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .export-btn:hover {
+            background: rgba(0, 255, 136, 0.2);
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+        }
+
+        .table-header {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
     </style>
 </head>
 
@@ -301,16 +417,28 @@
         <div id="data-container" class="data-table-container">
             <div class="table-header">
                 <span class="table-title">📋 銘柄一覧</span>
+                <div class="table-controls">
+                    <input type="text" id="search-input" placeholder="🔍 コードまたは企業名で検索..." class="search-input">
+                    <label class="filter-toggle">
+                        <input type="checkbox" id="filter-with-data">
+                        <span>データありのみ</span>
+                    </label>
+                    <button id="export-csv" class="export-btn">📥 CSV</button>
+                </div>
                 <span class="table-count" id="table-count"></span>
             </div>
             <div class="table-wrapper">
-                <table>
+                <table id="stocks-table">
                     <thead>
                         <tr>
-                            <th>証券コード</th>
-                            <th>企業名</th>
-                            <th>売上高（円）</th>
-                            <th>更新日時</th>
+                            <th data-sort="Code" class="sortable">証券コード</th>
+                            <th data-sort="Name" class="sortable">企業名</th>
+                            <th data-sort="NetSales" class="sortable">売上高（億円）</th>
+                            <th data-sort="OperatingIncome" class="sortable">営業利益（億円）</th>
+                            <th data-sort="NetIncome" class="sortable">純利益（億円）</th>
+                            <th data-sort="TotalAssets" class="sortable">総資産（億円）</th>
+                            <th data-sort="NetAssets" class="sortable">純資産（億円）</th>
+                            <th data-sort="UpdatedAt" class="sortable">更新日</th>
                         </tr>
                     </thead>
                     <tbody id="table-body"></tbody>
@@ -366,10 +494,19 @@
             }
         }
 
+        // グローバル変数
+        let stocksData = [];
+        let currentSort = { key: 'NetSales', order: 'desc' };
+
         function displayData(stocks) {
+            stocksData = stocks;
+
             // 統計情報を更新
             document.getElementById('total-stocks').textContent =
                 stocks.length.toLocaleString() + ' 社';
+
+            // データがある銘柄数をカウント
+            const withData = stocks.filter(s => s.NetSales > 0).length;
 
             // 最終更新日を取得
             if (stocks.length > 0) {
@@ -384,21 +521,70 @@
                 }
             }
 
-            // テーブルにデータを表示
+            // 初回はソートして表示
+            sortAndRender();
+
+            // ソートイベントを設定
+            setupSortEvents();
+
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('data-container').style.display = 'block';
+        }
+
+        function formatOku(value) {
+            if (!value || value === 0) return { text: '-', class: 'zero' };
+            const oku = value / 100000000; // 億円に変換
+            const formatted = oku.toFixed(1);
+            if (oku >= 0) {
+                return { text: formatted, class: value > 0 ? 'positive' : 'zero' };
+            } else {
+                return { text: formatted, class: 'negative' };
+            }
+        }
+
+        function sortAndRender() {
+            const sorted = [...stocksData].sort((a, b) => {
+                let aVal = a[currentSort.key] || '';
+                let bVal = b[currentSort.key] || '';
+
+                // 数値の場合
+                if (typeof aVal === 'number' || typeof bVal === 'number') {
+                    aVal = Number(aVal) || 0;
+                    bVal = Number(bVal) || 0;
+                }
+
+                if (currentSort.order === 'asc') {
+                    return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+                } else {
+                    return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+                }
+            });
+
+            renderTable(sorted);
+            updateSortIndicators();
+        }
+
+        function renderTable(stocks) {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
 
             stocks.forEach(stock => {
                 const tr = document.createElement('tr');
-                const netSales = stock.NetSales || 0;
-                const formattedSales = netSales > 0
-                    ? '¥' + netSales.toLocaleString()
-                    : '-';
+
+                const sales = formatOku(stock.NetSales);
+                const opIncome = formatOku(stock.OperatingIncome);
+                const netIncome = formatOku(stock.NetIncome);
+                const totalAssets = formatOku(stock.TotalAssets);
+                const netAssets = formatOku(stock.NetAssets);
 
                 tr.innerHTML = `
                     <td class="code-cell">${stock.Code}</td>
                     <td class="name-cell" title="${stock.Name}">${stock.Name}</td>
-                    <td class="number-cell">${formattedSales}</td>
+                    <td class="number-cell ${sales.class}">${sales.text}</td>
+                    <td class="number-cell ${opIncome.class}">${opIncome.text}</td>
+                    <td class="number-cell ${netIncome.class}">${netIncome.text}</td>
+                    <td class="number-cell ${totalAssets.class}">${totalAssets.text}</td>
+                    <td class="number-cell ${netAssets.class}">${netAssets.text}</td>
                     <td class="date-cell">${stock.UpdatedAt ? stock.UpdatedAt.substring(0, 10) : '-'}</td>
                 `;
                 tbody.appendChild(tr);
@@ -406,9 +592,136 @@
 
             document.getElementById('table-count').textContent =
                 stocks.length + ' 件表示中';
+        }
 
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('data-container').style.display = 'block';
+        function setupSortEvents() {
+            document.querySelectorAll('.sortable').forEach(th => {
+                th.addEventListener('click', () => {
+                    const key = th.dataset.sort;
+                    if (currentSort.key === key) {
+                        currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        currentSort.key = key;
+                        currentSort.order = 'desc';
+                    }
+                    sortAndRender();
+                });
+            });
+        }
+
+        function updateSortIndicators() {
+            document.querySelectorAll('.sortable').forEach(th => {
+                th.classList.remove('asc', 'desc');
+                if (th.dataset.sort === currentSort.key) {
+                    th.classList.add(currentSort.order);
+                }
+            });
+        }
+
+        // 検索・フィルター機能
+        let searchTerm = '';
+        let filterWithData = false;
+
+        function setupFilterEvents() {
+            const searchInput = document.getElementById('search-input');
+            const filterCheckbox = document.getElementById('filter-with-data');
+            const exportBtn = document.getElementById('export-csv');
+
+            searchInput.addEventListener('input', (e) => {
+                searchTerm = e.target.value.toLowerCase();
+                sortAndRender();
+            });
+
+            filterCheckbox.addEventListener('change', (e) => {
+                filterWithData = e.target.checked;
+                sortAndRender();
+            });
+
+            exportBtn.addEventListener('click', exportToCSV);
+        }
+
+        function getFilteredStocks() {
+            return stocksData.filter(stock => {
+                // 検索フィルター
+                if (searchTerm) {
+                    const matchCode = stock.Code.toLowerCase().includes(searchTerm);
+                    const matchName = stock.Name.toLowerCase().includes(searchTerm);
+                    if (!matchCode && !matchName) return false;
+                }
+
+                // データありフィルター
+                if (filterWithData) {
+                    if (!stock.NetSales && !stock.OperatingIncome && !stock.NetIncome) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+        }
+
+        function sortAndRender() {
+            const filtered = getFilteredStocks();
+
+            const sorted = [...filtered].sort((a, b) => {
+                let aVal = a[currentSort.key] || '';
+                let bVal = b[currentSort.key] || '';
+
+                // 数値の場合
+                if (typeof aVal === 'number' || typeof bVal === 'number') {
+                    aVal = Number(aVal) || 0;
+                    bVal = Number(bVal) || 0;
+                }
+
+                if (currentSort.order === 'asc') {
+                    return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+                } else {
+                    return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+                }
+            });
+
+            renderTable(sorted);
+            updateSortIndicators();
+
+            // フィルター結果を表示
+            const totalCount = stocksData.length;
+            const filteredCount = sorted.length;
+            if (filteredCount < totalCount) {
+                document.getElementById('table-count').textContent =
+                    `${filteredCount} 件表示中（全${totalCount}件）`;
+            } else {
+                document.getElementById('table-count').textContent =
+                    `${filteredCount} 件表示中`;
+            }
+        }
+
+        function exportToCSV() {
+            const filtered = getFilteredStocks();
+
+            const headers = ['証券コード', '企業名', '売上高（億円）', '営業利益（億円）', '純利益（億円）', '総資産（億円）', '純資産（億円）', '更新日'];
+
+            const rows = filtered.map(stock => [
+                stock.Code,
+                stock.Name,
+                stock.NetSales ? (stock.NetSales / 100000000).toFixed(1) : '',
+                stock.OperatingIncome ? (stock.OperatingIncome / 100000000).toFixed(1) : '',
+                stock.NetIncome ? (stock.NetIncome / 100000000).toFixed(1) : '',
+                stock.TotalAssets ? (stock.TotalAssets / 100000000).toFixed(1) : '',
+                stock.NetAssets ? (stock.NetAssets / 100000000).toFixed(1) : '',
+                stock.UpdatedAt ? stock.UpdatedAt.substring(0, 10) : ''
+            ]);
+
+            const csvContent = [headers, ...rows]
+                .map(row => row.map(cell => `"${cell}"`).join(','))
+                .join('\n');
+
+            // BOM付きでExcel対応
+            const bom = '\uFEFF';
+            const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `stocks_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
         }
 
         // ページ読み込み時に実行

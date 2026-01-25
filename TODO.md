@@ -2,7 +2,7 @@
 
 **参考**: [kawasin73さんの記事](https://kawasin73.hatenablog.com/entry/2025/11/20/224346)
 
-**最終更新**: 2026-01-18
+**最終更新**: 2026-01-25
 
 ---
 
@@ -18,7 +18,7 @@
 ### 1. ストレージ構成（GitHub Releases）
 - [x] SQLiteファイルをGitHub Releasesにアップロード（daily-update.yml）
 - [ ] **Raw XBRL files** をtar.gz化してReleasesに保存（オプション）
-- [ ] gzip圧縮版DBの配置
+- [x] gzip圧縮版DBの配置（daily-update.ymlで実装済み）
 
 ### 2. GitHub Actions 拡張
 - [x] 最新ReleasesからSQLiteダウンロード
@@ -28,9 +28,10 @@
 - [ ] **新規銘柄発見時のIssue作成**（Daily Notification）
 
 ### 3. GitHub Pages ページ構成
-- [ ] `growth.html` - オニール成長株アナライザー
-- [ ] `special-pbr.html` - ネットネットバリュー（スペシャルPBR）
-- [ ] sqlite-wasm または 静的JSON でDB読み込み
+- [x] `oneil-screen.html` - オニール成長株アナライザー（プレースホルダー）
+- [x] `net-net-value.html` - ネットネットバリュー（プレースホルダー）
+- [x] `market-top.html` - マーケット天井検出（プレースホルダー）
+- [ ] sqlite-wasm または 静的JSON でDB読み込み（実機能）
 
 ### 4. Use Cases 対応
 - [ ] **Local Development**: GitHub Releases からDB取得
@@ -53,7 +54,7 @@
 ### 6. XBRLパース項目の拡張
 
 #### 資産項目（ネットネット計算用）
-- [ ] `cash_and_deposits` - 現金及び預金
+- [x] `cash_and_deposits` - 現金及び預金（main.go実装済み）
 - [ ] `deposits` - 預金
 - [ ] `investment_securities` - 投資有価証券
 - [ ] `accounts_receivable` - 売掛金
@@ -62,19 +63,20 @@
 - [ ] `inventories` - 棚卸資産
 
 #### 負債項目
-- [ ] `liabilities` - 負債合計
-- [ ] `current_liabilities` - 流動負債
+- [x] `liabilities` - 負債合計（main.go実装済み）
+- [x] `current_liabilities` - 流動負債（main.go実装済み）
 - [ ] `non_current_liabilities` - 固定負債
 
 #### 利益・資本項目
-- [ ] `net_income` - 純利益
-- [ ] `operating_income` - 営業利益
-- [ ] `net_assets` - 純資産
-- [ ] `total_assets` - 総資産
+- [x] `net_income` - 純利益（main.go実装済み）
+- [x] `operating_income` - 営業利益（main.go実装済み）
+- [x] `net_assets` - 純資産（main.go実装済み）
+- [x] `total_assets` - 総資産（main.go実装済み）
+- [x] `current_assets` - 流動資産（main.go実装済み）
 - [ ] `shareholders_equity` - 株主資本
 - [ ] `eps` - 1株当たり利益（四半期・通期）
-- [ ] `number_of_shares` - 発行済株式数
-- [ ] `roe` - 自己資本利益率
+- [x] `number_of_shares` - 発行済株式数（main.go実装済み）
+- [ ] `roe` - 自己資本利益率（計算ロジック未実装）
 
 ### 7. 株価データの取得
 - [ ] 外部APIから日次株価を取得
@@ -267,15 +269,34 @@
 
 ## ✅ 完了済み
 
+### インフラ・基盤
 - [x] Docker環境構築
 - [x] EDINET APIからの書類取得
-- [x] XBRLパース（売上高のみ）
-- [x] SQLite保存
-- [x] GitHub Actions日次バッチ
-- [x] GitHub Pagesデプロイ
+- [x] SQLite保存（拡張スキーマ対応）
+- [x] GitHub Actions日次バッチ（daily-update.yml）
+- [x] GitHub Pagesデプロイ（deploy-pages.yml）
+- [x] gzip圧縮版DBの配置
+
+### XBRLパース
+- [x] 売上高（NetSales）
+- [x] 営業利益（OperatingIncome）
+- [x] 純利益（NetIncome / ProfitLoss）
+- [x] 総資産（TotalAssets / Assets）
+- [x] 純資産（NetAssets）
+- [x] 流動資産（CurrentAssets）
+- [x] 負債合計（Liabilities）
+- [x] 流動負債（CurrentLiabilities）
+- [x] 現金及び預金（CashAndDeposits）
+- [x] 発行済株式数（SharesIssued）
+
+### フロントエンド
 - [x] 基本ダッシュボード（ダークモードUI）
-- [x] 分析ページのプレースホルダー作成
+- [x] 分析ページのプレースホルダー作成（net-net-value.html, oneil-screen.html, market-top.html）
 - [x] Go API + 静的JSONのハイブリッド対応
+- [x] テーブルに財務項目列追加（営業利益、純利益、総資産、純資産）
+- [x] 金額を億円単位で表示
+- [x] テーブルソート機能（ヘッダークリックで昇順/降順切り替え）
+- [x] サーバー起動時のDBマイグレーション自動実行
 
 ---
 
@@ -284,9 +305,9 @@
 | 機能 | kawasin73さん | 現プロジェクト |
 |------|--------------|----------------|
 | DB構成 | 3ファイル (xbrl/stock_price/rs) | 1ファイル ❌ |
-| XBRLパース | 多数の財務項目 | 売上高のみ ❌ |
+| XBRLパース | 多数の財務項目 | **主要10項目 ✅** |
 | 株価データ | あり | なし ❌ |
-| ネットネット計算 | カスタム係数対応 | なし ❌ |
+| ネットネット計算 | カスタム係数対応 | なし ❌（データは取得済み） |
 | オニールスクリーニング | 完全実装 | なし ❌ |
 | RS計算 | 専用DB | なし ❌ |
 | 市場天井検出 | パラメータ調整可能 | なし ❌ |
@@ -296,13 +317,16 @@
 
 ---
 
-## 🎯 推奨実装順序
+## 🎯 推奨実装順序（更新版）
 
-1. **XBRLパース拡張** → 全ての計算の基礎
+~~1. **XBRLパース拡張** → 全ての計算の基礎~~ ✅ 完了
+
+1. **EPS計算ロジック** → 純利益÷発行済株式数で計算可能に
 2. **株価データ取得** → RS・時価総額に必須
-3. **3DB構成に変更** → xbrl.db / stock_price.db / rs.db
-4. **lightweight-charts導入** → チャート表示の基盤
-5. **オニールランキング実装** → スコア計算・テーブル
-6. **銘柄詳細ページ** → チャート・主要指標
-7. **市場天井検出** → パラメータUI・チャート
-8. **ネットネット計算** → カスタム係数対応
+3. **ネットネット計算UI実装** → 取得済みデータで計算可能
+4. **3DB構成に変更** → xbrl.db / stock_price.db / rs.db
+5. **lightweight-charts導入** → チャート表示の基盤
+6. **オニールランキング実装** → スコア計算・テーブル
+7. **銘柄詳細ページ** → チャート・主要指標
+8. **市場天井検出** → パラメータUI・チャート
+9. **ネットネット計算** → カスタム係数対応
