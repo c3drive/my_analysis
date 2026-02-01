@@ -433,6 +433,8 @@
                         <tr>
                             <th data-sort="Code" class="sortable">証券コード</th>
                             <th data-sort="Name" class="sortable">企業名</th>
+                            <th data-sort="LastPrice" class="sortable">株価（円）</th>
+                            <th data-sort="MarketCap" class="sortable">時価総額（億円）</th>
                             <th data-sort="NetSales" class="sortable">売上高（億円）</th>
                             <th data-sort="OperatingIncome" class="sortable">営業利益（億円）</th>
                             <th data-sort="NetIncome" class="sortable">純利益（億円）</th>
@@ -524,8 +526,9 @@
             // 初回はソートして表示
             sortAndRender();
 
-            // ソートイベントを設定
+            // イベントを設定
             setupSortEvents();
+            setupFilterEvents();
 
             document.getElementById('loading').style.display = 'none';
             document.getElementById('data-container').style.display = 'block';
@@ -542,34 +545,21 @@
             }
         }
 
-        function sortAndRender() {
-            const sorted = [...stocksData].sort((a, b) => {
-                let aVal = a[currentSort.key] || '';
-                let bVal = b[currentSort.key] || '';
-
-                // 数値の場合
-                if (typeof aVal === 'number' || typeof bVal === 'number') {
-                    aVal = Number(aVal) || 0;
-                    bVal = Number(bVal) || 0;
-                }
-
-                if (currentSort.order === 'asc') {
-                    return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
-                } else {
-                    return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
-                }
-            });
-
-            renderTable(sorted);
-            updateSortIndicators();
-        }
-
         function renderTable(stocks) {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
 
             stocks.forEach(stock => {
                 const tr = document.createElement('tr');
+
+                // 株価（円単位、カンマ区切り）
+                const priceText = stock.LastPrice > 0
+                    ? stock.LastPrice.toLocaleString('ja-JP', { maximumFractionDigits: 0 })
+                    : '-';
+                const priceClass = stock.LastPrice > 0 ? '' : 'no-data';
+
+                // 時価総額（億円単位）
+                const marketCap = formatOku(stock.MarketCap);
 
                 const sales = formatOku(stock.NetSales);
                 const opIncome = formatOku(stock.OperatingIncome);
@@ -580,6 +570,8 @@
                 tr.innerHTML = `
                     <td class="code-cell">${stock.Code}</td>
                     <td class="name-cell" title="${stock.Name}">${stock.Name}</td>
+                    <td class="number-cell ${priceClass}">${priceText}</td>
+                    <td class="number-cell ${marketCap.class}">${marketCap.text}</td>
                     <td class="number-cell ${sales.class}">${sales.text}</td>
                     <td class="number-cell ${opIncome.class}">${opIncome.text}</td>
                     <td class="number-cell ${netIncome.class}">${netIncome.text}</td>
@@ -698,11 +690,13 @@
         function exportToCSV() {
             const filtered = getFilteredStocks();
 
-            const headers = ['証券コード', '企業名', '売上高（億円）', '営業利益（億円）', '純利益（億円）', '総資産（億円）', '純資産（億円）', '更新日'];
+            const headers = ['証券コード', '企業名', '株価（円）', '時価総額（億円）', '売上高（億円）', '営業利益（億円）', '純利益（億円）', '総資産（億円）', '純資産（億円）', '更新日'];
 
             const rows = filtered.map(stock => [
                 stock.Code,
                 stock.Name,
+                stock.LastPrice ? stock.LastPrice.toFixed(0) : '',
+                stock.MarketCap ? (stock.MarketCap / 100000000).toFixed(1) : '',
                 stock.NetSales ? (stock.NetSales / 100000000).toFixed(1) : '',
                 stock.OperatingIncome ? (stock.OperatingIncome / 100000000).toFixed(1) : '',
                 stock.NetIncome ? (stock.NetIncome / 100000000).toFixed(1) : '',

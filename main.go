@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -67,8 +68,19 @@ type FinancialData struct {
 	SharesIssued       int64
 }
 
+// StockPrice は株価データを保持する構造体
+type StockPrice struct {
+	Code   string  `json:"Code"`
+	Date   string  `json:"Date"`
+	Open   float64 `json:"Open"`
+	High   float64 `json:"High"`
+	Low    float64 `json:"Low"`
+	Close  float64 `json:"Close"`
+	Volume int64   `json:"Volume"`
+}
+
 func main() {
-	mode := flag.String("mode", "run", "execution mode: run (fetch data), serve (web dashboard), or test-parse")
+	mode := flag.String("mode", "run", "execution mode: run (fetch EDINET), serve (web), fetch-prices (stock prices), or test-parse")
 	dateFlag := flag.String("date", "2025-12-25", "target date for run mode (YYYY-MM-DD)")
 	flag.Parse()
 
@@ -79,6 +91,8 @@ func main() {
 		runCollector(*dateFlag)
 	case "serve":
 		startServer()
+	case "fetch-prices":
+		fetchStockPrices()
 	default:
 		log.Fatalf("Unknown mode: %s", *mode)
 	}
@@ -185,27 +199,54 @@ func startServer() {
 		}
 		defer db.Close()
 
+		// 最新株価を含めたクエリ
 		rows, err := db.Query(`
-			SELECT code, name, updated_at,
-				   COALESCE(net_sales, 0), COALESCE(operating_income, 0), COALESCE(net_income, 0),
-				   COALESCE(total_assets, 0), COALESCE(net_assets, 0), COALESCE(current_assets, 0),
-				   COALESCE(liabilities, 0), COALESCE(current_liabilities, 0),
-				   COALESCE(cash_and_deposits, 0), COALESCE(shares_issued, 0)
-			FROM stocks ORDER BY code ASC`)
+			SELECT s.code, s.name, s.updated_at,
+				   COALESCE(s.net_sales, 0), COALESCE(s.operating_income, 0), COALESCE(s.net_income, 0),
+				   COALESCE(s.total_assets, 0), COALESCE(s.net_assets, 0), COALESCE(s.current_assets, 0),
+				   COALESCE(s.liabilities, 0), COALESCE(s.current_liabilities, 0),
+				   COALESCE(s.cash_and_deposits, 0), COALESCE(s.shares_issued, 0),
+				   COALESCE(p.close, 0) as last_price,
+				   p.date as price_date
+			FROM stocks s
+			LEFT JOIN (
+				SELECT code, close, date FROM stock_prices sp1
+				WHERE date = (SELECT MAX(date) FROM stock_prices sp2 WHERE sp2.code = sp1.code)
+			) p ON s.code = p.code
+			ORDER BY s.code ASC`)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		defer rows.Close()
 
-		var stocks []Stock
+		type StockWithPrice struct {
+			Stock
+			LastPrice float64 `json:"LastPrice"`
+			PriceDate *string `json:"PriceDate"`
+			MarketCap int64   `json:"MarketCap"` // 時価総額 = 株価 × 発行済株式数
+		}
+
+		var stocks []StockWithPrice
 		for rows.Next() {
-			var s Stock
+			var s StockWithPrice
+			var priceDate sql.NullString
 			rows.Scan(&s.Code, &s.Name, &s.UpdatedAt,
 				&s.NetSales, &s.OperatingIncome, &s.NetIncome,
 				&s.TotalAssets, &s.NetAssets, &s.CurrentAssets,
 				&s.Liabilities, &s.CurrentLiabilities,
-				&s.CashAndDeposits, &s.SharesIssued)
+				&s.CashAndDeposits, &s.SharesIssued,
+				&s.LastPrice, &priceDate)
+
+			if priceDate.Valid {
+				s.PriceDate = &priceDate.String
+			}
+
+			// 時価総額を計算（株価 × 発行済株式数）
+			if s.LastPrice > 0 && s.SharesIssued > 0 {
+				s.MarketCap = int64(s.LastPrice * float64(s.SharesIssued))
+			}
+
 			stocks = append(stocks, s)
 		}
 
@@ -213,9 +254,48 @@ func startServer() {
 		json.NewEncoder(w).Encode(stocks)
 	})
 
+	// 個別銘柄の株価履歴API
+	http.HandleFunc("/api/prices/", func(w http.ResponseWriter, r *http.Request) {
+		code := strings.TrimPrefix(r.URL.Path, "/api/prices/")
+		if code == "" {
+			http.Error(w, "code required", http.StatusBadRequest)
+			return
+		}
+
+		db, err := sql.Open("sqlite", "./data/stock_data.db")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer db.Close()
+
+		rows, err := db.Query(`
+			SELECT code, date, open, high, low, close, volume 
+			FROM stock_prices 
+			WHERE code = ? 
+			ORDER BY date DESC
+			LIMIT 365`, code)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var prices []StockPrice
+		for rows.Next() {
+			var p StockPrice
+			rows.Scan(&p.Code, &p.Date, &p.Open, &p.High, &p.Low, &p.Close, &p.Volume)
+			prices = append(prices, p)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(prices)
+	})
+
 	fmt.Println("🌐 Dashboard starting at http://localhost:8080")
 	fmt.Println("📂 Serving static files from ./web/")
 	fmt.Println("📊 API endpoint: http://localhost:8080/api/stocks")
+	fmt.Println("📈 Price API: http://localhost:8080/api/prices/{code}")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
@@ -271,6 +351,22 @@ func initDB() (*sql.DB, error) {
 
 	if _, err = db.Exec(sqlStmt); err != nil {
 		return nil, fmt.Errorf("テーブル作成失敗: %w", err)
+	}
+
+	// 株価テーブル
+	priceTableSQL := `
+	CREATE TABLE IF NOT EXISTS stock_prices (
+		code TEXT,
+		date TEXT,
+		open REAL,
+		high REAL,
+		low REAL,
+		close REAL,
+		volume INTEGER,
+		PRIMARY KEY (code, date)
+	);`
+	if _, err = db.Exec(priceTableSQL); err != nil {
+		return nil, fmt.Errorf("株価テーブル作成失敗: %w", err)
 	}
 
 	// 既存テーブルに新しいカラムがない場合は追加（マイグレーション）
@@ -524,4 +620,160 @@ func extractValue(line string) string {
 		return match[1]
 	}
 	return ""
+}
+
+// fetchStockPrices はStooqから株価データを取得してDBに保存する
+func fetchStockPrices() {
+	db, err := initDB()
+	if err != nil {
+		log.Fatalf("DB初期化失敗: %v", err)
+	}
+	defer db.Close()
+
+	// DBから証券コード一覧を取得
+	rows, err := db.Query("SELECT code FROM stocks ORDER BY code")
+	if err != nil {
+		log.Fatalf("銘柄コード取得失敗: %v", err)
+	}
+	defer rows.Close()
+
+	var codes []string
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err == nil {
+			codes = append(codes, code)
+		}
+	}
+
+	fmt.Printf("📈 Fetching stock prices for %d stocks...\n", len(codes))
+
+	successCount := 0
+	errorCount := 0
+
+	for i, code := range codes {
+		prices, err := fetchPricesFromStooq(code)
+		if err != nil {
+			fmt.Printf("  ❌ %s: %v\n", code, err)
+			errorCount++
+			continue
+		}
+
+		// DBに保存
+		savedCount, err := savePricesToDB(db, code, prices)
+		if err != nil {
+			fmt.Printf("  ❌ %s: DB保存失敗 %v\n", code, err)
+			errorCount++
+			continue
+		}
+
+		if savedCount > 0 {
+			fmt.Printf("  ✅ [%d/%d] %s: %d件保存\n", i+1, len(codes), code, savedCount)
+			successCount++
+		} else {
+			fmt.Printf("  ⏭️ [%d/%d] %s: 新規データなし\n", i+1, len(codes), code)
+		}
+
+		// レート制限対策（1秒待機）
+		time.Sleep(1 * time.Second)
+	}
+
+	fmt.Printf("\n📊 完了: 成功 %d, エラー %d\n", successCount, errorCount)
+}
+
+// fetchPricesFromStooq はStooqから株価を取得
+func fetchPricesFromStooq(code string) ([]StockPrice, error) {
+	// 証券コードの調整（4桁なら.jpを付ける）
+	stooqCode := code
+	if len(code) == 4 {
+		stooqCode = code + ".jp"
+	}
+
+	url := fmt.Sprintf("https://stooq.com/q/d/l/?s=%s&i=d", stooqCode)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP status: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read error: %w", err)
+	}
+
+	lines := strings.Split(string(body), "\n")
+	if len(lines) < 2 {
+		return nil, fmt.Errorf("no data returned")
+	}
+
+	// ヘッダー確認
+	header := strings.TrimSpace(lines[0])
+	if !strings.Contains(header, "Date") {
+		return nil, fmt.Errorf("invalid format: %s", header)
+	}
+
+	var prices []StockPrice
+	oneYearAgo := time.Now().AddDate(-1, 0, 0).Format("2006-01-02")
+
+	for _, line := range lines[1:] {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		fields := strings.Split(line, ",")
+		if len(fields) < 6 {
+			continue
+		}
+
+		// 日付をチェック（1年以内のデータのみ）
+		date := fields[0]
+		if date < oneYearAgo {
+			continue
+		}
+
+		open, _ := strconv.ParseFloat(fields[1], 64)
+		high, _ := strconv.ParseFloat(fields[2], 64)
+		low, _ := strconv.ParseFloat(fields[3], 64)
+		closePrice, _ := strconv.ParseFloat(fields[4], 64)
+		volume, _ := strconv.ParseInt(fields[5], 10, 64)
+
+		prices = append(prices, StockPrice{
+			Code:   code,
+			Date:   date,
+			Open:   open,
+			High:   high,
+			Low:    low,
+			Close:  closePrice,
+			Volume: volume,
+		})
+	}
+
+	return prices, nil
+}
+
+// savePricesToDB は株価をDBに保存（UPSERT）
+func savePricesToDB(db *sql.DB, code string, prices []StockPrice) (int, error) {
+	stmt, err := db.Prepare(`
+		INSERT OR REPLACE INTO stock_prices (code, date, open, high, low, close, volume)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+
+	count := 0
+	for _, p := range prices {
+		_, err := stmt.Exec(code, p.Date, p.Open, p.High, p.Low, p.Close, p.Volume)
+		if err == nil {
+			count++
+		}
+	}
+
+	return count, nil
 }
