@@ -297,6 +297,20 @@
             color: #666;
         }
 
+        /* 投資指標の色分け */
+        .value-good {
+            color: #00ff88 !important;
+            font-weight: 600;
+        }
+
+        .value-ok {
+            color: #ffd700 !important;
+        }
+
+        .value-bad {
+            color: #ff6b6b !important;
+        }
+
         .table-controls {
             display: flex;
             gap: 15px;
@@ -435,11 +449,12 @@
                             <th data-sort="Name" class="sortable">企業名</th>
                             <th data-sort="LastPrice" class="sortable">株価（円）</th>
                             <th data-sort="MarketCap" class="sortable">時価総額（億円）</th>
+                            <th data-sort="PER" class="sortable">PER</th>
+                            <th data-sort="PBR" class="sortable">PBR</th>
+                            <th data-sort="EquityRatio" class="sortable">自己資本比率</th>
+                            <th data-sort="NetNetRatio" class="sortable">ネットネット</th>
                             <th data-sort="NetSales" class="sortable">売上高（億円）</th>
-                            <th data-sort="OperatingIncome" class="sortable">営業利益（億円）</th>
                             <th data-sort="NetIncome" class="sortable">純利益（億円）</th>
-                            <th data-sort="TotalAssets" class="sortable">総資産（億円）</th>
-                            <th data-sort="NetAssets" class="sortable">純資産（億円）</th>
                             <th data-sort="UpdatedAt" class="sortable">更新日</th>
                         </tr>
                     </thead>
@@ -549,6 +564,43 @@
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
 
+            // 投資指標のフォーマッター
+            function formatRatio(value, decimals = 2, suffix = '') {
+                if (value === null || value === undefined) return { text: '-', class: 'no-data' };
+                const formatted = value.toFixed(decimals);
+                return { text: formatted + suffix, class: '' };
+            }
+
+            // PERの色分け（低いほど割安で緑）
+            function formatPER(value) {
+                if (value === null || value === undefined) return { text: '-', class: 'no-data' };
+                let colorClass = '';
+                if (value < 10) colorClass = 'value-good';
+                else if (value < 15) colorClass = 'value-ok';
+                else if (value > 30) colorClass = 'value-bad';
+                return { text: value.toFixed(1), class: colorClass };
+            }
+
+            // PBRの色分け（1倍以下は割安で緑）
+            function formatPBR(value) {
+                if (value === null || value === undefined) return { text: '-', class: 'no-data' };
+                let colorClass = '';
+                if (value < 1) colorClass = 'value-good';
+                else if (value < 1.5) colorClass = 'value-ok';
+                else if (value > 3) colorClass = 'value-bad';
+                return { text: value.toFixed(2), class: colorClass };
+            }
+
+            // ネットネット値（1以上は超割安で緑）
+            function formatNetNet(value) {
+                if (value === null || value === undefined) return { text: '-', class: 'no-data' };
+                let colorClass = '';
+                if (value > 1) colorClass = 'value-good';
+                else if (value > 0.5) colorClass = 'value-ok';
+                else if (value < 0) colorClass = 'value-bad';
+                return { text: value.toFixed(2), class: colorClass };
+            }
+
             stocks.forEach(stock => {
                 const tr = document.createElement('tr');
 
@@ -561,22 +613,26 @@
                 // 時価総額（億円単位）
                 const marketCap = formatOku(stock.MarketCap);
 
+                // 投資指標
+                const per = formatPER(stock.PER);
+                const pbr = formatPBR(stock.PBR);
+                const equityRatio = formatRatio(stock.EquityRatio, 1, '%');
+                const netNet = formatNetNet(stock.NetNetRatio);
+
                 const sales = formatOku(stock.NetSales);
-                const opIncome = formatOku(stock.OperatingIncome);
                 const netIncome = formatOku(stock.NetIncome);
-                const totalAssets = formatOku(stock.TotalAssets);
-                const netAssets = formatOku(stock.NetAssets);
 
                 tr.innerHTML = `
                     <td class="code-cell">${stock.Code}</td>
                     <td class="name-cell" title="${stock.Name}">${stock.Name}</td>
                     <td class="number-cell ${priceClass}">${priceText}</td>
                     <td class="number-cell ${marketCap.class}">${marketCap.text}</td>
+                    <td class="number-cell ${per.class}">${per.text}</td>
+                    <td class="number-cell ${pbr.class}">${pbr.text}</td>
+                    <td class="number-cell ${equityRatio.class}">${equityRatio.text}</td>
+                    <td class="number-cell ${netNet.class}">${netNet.text}</td>
                     <td class="number-cell ${sales.class}">${sales.text}</td>
-                    <td class="number-cell ${opIncome.class}">${opIncome.text}</td>
                     <td class="number-cell ${netIncome.class}">${netIncome.text}</td>
-                    <td class="number-cell ${totalAssets.class}">${totalAssets.text}</td>
-                    <td class="number-cell ${netAssets.class}">${netAssets.text}</td>
                     <td class="date-cell">${stock.UpdatedAt ? stock.UpdatedAt.substring(0, 10) : '-'}</td>
                 `;
                 tbody.appendChild(tr);
@@ -690,18 +746,19 @@
         function exportToCSV() {
             const filtered = getFilteredStocks();
 
-            const headers = ['証券コード', '企業名', '株価（円）', '時価総額（億円）', '売上高（億円）', '営業利益（億円）', '純利益（億円）', '総資産（億円）', '純資産（億円）', '更新日'];
+            const headers = ['証券コード', '企業名', '株価（円）', '時価総額（億円）', 'PER', 'PBR', '自己資本比率(%)', 'ネットネット値', '売上高（億円）', '純利益（億円）', '更新日'];
 
             const rows = filtered.map(stock => [
                 stock.Code,
                 stock.Name,
                 stock.LastPrice ? stock.LastPrice.toFixed(0) : '',
                 stock.MarketCap ? (stock.MarketCap / 100000000).toFixed(1) : '',
+                stock.PER ? stock.PER.toFixed(1) : '',
+                stock.PBR ? stock.PBR.toFixed(2) : '',
+                stock.EquityRatio ? stock.EquityRatio.toFixed(1) : '',
+                stock.NetNetRatio ? stock.NetNetRatio.toFixed(2) : '',
                 stock.NetSales ? (stock.NetSales / 100000000).toFixed(1) : '',
-                stock.OperatingIncome ? (stock.OperatingIncome / 100000000).toFixed(1) : '',
                 stock.NetIncome ? (stock.NetIncome / 100000000).toFixed(1) : '',
-                stock.TotalAssets ? (stock.TotalAssets / 100000000).toFixed(1) : '',
-                stock.NetAssets ? (stock.NetAssets / 100000000).toFixed(1) : '',
                 stock.UpdatedAt ? stock.UpdatedAt.substring(0, 10) : ''
             ]);
 

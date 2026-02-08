@@ -21,7 +21,7 @@
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 30px;
         }
@@ -97,35 +97,6 @@
             color: #b0b0b0;
         }
 
-        .canslim-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }
-
-        .canslim-item {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-        }
-
-        .canslim-item .letter {
-            font-size: 2rem;
-            font-weight: bold;
-            background: linear-gradient(135deg, #ff6b6b, #ffd93d);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .canslim-item .meaning {
-            font-size: 0.75rem;
-            color: #888;
-            margin-top: 5px;
-        }
-
         .status-bar {
             display: flex;
             gap: 30px;
@@ -153,64 +124,175 @@
             color: #ff6b6b;
         }
 
-        .coming-soon {
-            text-align: center;
-            padding: 80px 40px;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 16px;
-            border: 2px dashed rgba(255, 255, 255, 0.1);
+        /* Scoring Criteria */
+        .criteria-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
         }
 
-        .coming-soon-icon {
-            font-size: 4rem;
-            margin-bottom: 20px;
+        .criteria-card {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .coming-soon h3 {
-            font-size: 1.5rem;
-            color: #666;
-            margin-bottom: 15px;
+        .criteria-card h4 {
+            color: #ff6b6b;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
         }
 
-        .coming-soon p {
-            color: #555;
-            max-width: 500px;
-            margin: 0 auto;
-            line-height: 1.8;
-        }
-
-        .requirements {
-            margin-top: 30px;
-            text-align: left;
-            display: inline-block;
-        }
-
-        .requirements h4 {
+        .criteria-card ul {
+            list-style: none;
+            font-size: 0.8rem;
             color: #888;
-            margin-bottom: 15px;
+        }
+
+        .criteria-card li {
+            padding: 3px 0;
+        }
+
+        .criteria-card .points {
+            color: #00ff88;
+            font-weight: bold;
+        }
+
+        /* Table Styles */
+        .table-wrapper {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: rgba(255, 107, 107, 0.2);
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.85rem;
+            border-bottom: 2px solid rgba(255, 107, 107, 0.3);
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             font-size: 0.9rem;
         }
 
-        .requirements ul {
-            list-style: none;
+        tr:hover {
+            background: rgba(255, 107, 107, 0.05);
         }
 
-        .requirements li {
-            padding: 8px 0;
-            color: #666;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        .rank-cell {
+            font-weight: bold;
+            color: #ffd93d;
+            text-align: center;
+            width: 50px;
         }
 
-        .requirements li::before {
-            content: '○';
-            color: #444;
+        .rank-1 {
+            color: #ffd700;
+            font-size: 1.2rem;
         }
 
-        .requirements li.done::before {
-            content: '✓';
+        .rank-2 {
+            color: #c0c0c0;
+        }
+
+        .rank-3 {
+            color: #cd7f32;
+        }
+
+        .code-cell {
+            font-family: 'Courier New', monospace;
+            color: #00d9ff;
+            font-weight: 600;
+        }
+
+        .name-cell {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .score-cell {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .score-high {
             color: #00ff88;
+        }
+
+        .score-medium {
+            color: #ffd93d;
+        }
+
+        .score-low {
+            color: #ff6b6b;
+        }
+
+        .number-cell {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+
+        .value-good {
+            color: #00ff88 !important;
+        }
+
+        .value-ok {
+            color: #ffd93d !important;
+        }
+
+        .value-bad {
+            color: #ff6b6b !important;
+        }
+
+        .no-data {
+            color: #555;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #888;
+        }
+
+        .loading-spinner {
+            font-size: 2rem;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #666;
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
         }
     </style>
 </head>
@@ -230,82 +312,231 @@
         </header>
 
         <div class="info-box">
-            <h2>📖 CAN-SLIM手法とは？</h2>
+            <h2>📖 スコアリング基準</h2>
             <p>
-                ウィリアム・オニールが開発した成長株投資手法です。
-                7つの要素の頭文字を取って「CAN-SLIM」と呼ばれます。
-                特にEPS（1株当たり利益）の成長率を重視し、
-                四半期で25%以上、年間で20%以上の成長を求めます。
+                各銘柄を以下の基準でスコアリングし、総合評価でランキングしています。
+                高ROE、低PER、低PBR、高自己資本比率の銘柄が上位にランクインします。
             </p>
+        </div>
 
-            <div class="canslim-grid">
-                <div class="canslim-item">
-                    <div class="letter">C</div>
-                    <div class="meaning">Current Earnings<br>当期利益</div>
-                </div>
-                <div class="canslim-item">
-                    <div class="letter">A</div>
-                    <div class="meaning">Annual Earnings<br>年間利益成長</div>
-                </div>
-                <div class="canslim-item">
-                    <div class="letter">N</div>
-                    <div class="meaning">New Products<br>新製品・新経営</div>
-                </div>
-                <div class="canslim-item">
-                    <div class="letter">S</div>
-                    <div class="meaning">Supply & Demand<br>需給</div>
-                </div>
-                <div class="canslim-item">
-                    <div class="letter">L</div>
-                    <div class="meaning">Leader or Laggard<br>業界リーダー</div>
-                </div>
-                <div class="canslim-item">
-                    <div class="letter">I</div>
-                    <div class="meaning">Institutional<br>機関投資家</div>
-                </div>
-                <div class="canslim-item">
-                    <div class="letter">M</div>
-                    <div class="meaning">Market Direction<br>市場動向</div>
-                </div>
+        <div class="criteria-grid">
+            <div class="criteria-card">
+                <h4>📈 ROE（自己資本利益率）</h4>
+                <ul>
+                    <li>20%超: <span class="points">+20点</span></li>
+                    <li>15%超: <span class="points">+15点</span></li>
+                    <li>10%超: <span class="points">+10点</span></li>
+                </ul>
+            </div>
+            <div class="criteria-card">
+                <h4>💰 PER（株価収益率）</h4>
+                <ul>
+                    <li>10倍未満: <span class="points">+15点</span></li>
+                    <li>15倍未満: <span class="points">+10点</span></li>
+                    <li>20倍未満: <span class="points">+5点</span></li>
+                </ul>
+            </div>
+            <div class="criteria-card">
+                <h4>📊 PBR（株価純資産倍率）</h4>
+                <ul>
+                    <li>1倍未満: <span class="points">+10点</span></li>
+                    <li>1.5倍未満: <span class="points">+5点</span></li>
+                </ul>
+            </div>
+            <div class="criteria-card">
+                <h4>🛡️ 自己資本比率</h4>
+                <ul>
+                    <li>50%超: <span class="points">+10点</span></li>
+                    <li>30%超: <span class="points">+5点</span></li>
+                </ul>
             </div>
         </div>
 
         <div class="status-bar">
             <div class="status-item">
-                <span class="status-label">機能ステータス</span>
-                <span class="status-value" style="color: #ffa500;">🔧 開発中</span>
+                <span class="status-label">データ状態</span>
+                <span class="status-value" id="db-status">読込中...</span>
             </div>
             <div class="status-item">
-                <span class="status-label">必要データ</span>
-                <span class="status-value" style="color: #888;">EPS・売上・株価</span>
+                <span class="status-label">対象銘柄数</span>
+                <span class="status-value" id="stock-count">-</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">最終更新</span>
+                <span class="status-value" id="last-update">-</span>
             </div>
         </div>
 
-        <div class="coming-soon">
-            <div class="coming-soon-icon">🚧</div>
-            <h3>この機能は現在開発中です</h3>
-            <p>
-                オニールスクリーニング機能を利用するには、
-                複数四半期のEPSデータと売上データの取得が必要です。
-            </p>
-
-            <div class="requirements">
-                <h4>実装に必要な項目:</h4>
-                <ul>
-                    <li class="done">EDINET APIからの書類取得</li>
-                    <li class="done">XBRLパース基盤</li>
-                    <li class="done">売上高（NetSales）の抽出</li>
-                    <li class="done">純利益（NetIncome）の抽出</li>
-                    <li class="done">発行済株式数の取得</li>
-                    <li>EPS（EarningsPerShare）計算ロジック</li>
-                    <li>過去4四半期のEPSデータ蓄積</li>
-                    <li>EPS成長率の計算ロジック</li>
-                    <li>売上成長率の計算ロジック</li>
-                    <li>ランキング・フィルタリング機能</li>
-                </ul>
-            </div>
+        <div class="table-wrapper">
+            <table id="ranking-table">
+                <thead>
+                    <tr>
+                        <th>順位</th>
+                        <th>スコア</th>
+                        <th>コード</th>
+                        <th>企業名</th>
+                        <th>株価</th>
+                        <th>時価総額(億)</th>
+                        <th>ROE(%)</th>
+                        <th>PER</th>
+                        <th>PBR</th>
+                        <th>自己資本比率(%)</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body">
+                    <tr>
+                        <td colspan="10" class="loading">
+                            <div class="loading-spinner">⏳</div>
+                            <p>データを読み込んでいます...</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
+
+    <script>
+        let stocksData = [];
+
+        async function loadData() {
+            try {
+                document.getElementById('db-status').textContent = '取得中...';
+
+                // APIからデータを取得
+                const response = await fetch('/api/oneil-ranking');
+                if (!response.ok) throw new Error('API error');
+                stocksData = await response.json();
+
+                if (stocksData && stocksData.length > 0) {
+                    document.getElementById('db-status').textContent = '読込完了';
+                    document.getElementById('stock-count').textContent = stocksData.length + '社';
+
+                    // 最新更新日を取得
+                    const dates = stocksData
+                        .filter(s => s.UpdatedAt)
+                        .map(s => s.UpdatedAt.substring(0, 10));
+                    if (dates.length > 0) {
+                        document.getElementById('last-update').textContent = dates[0];
+                    }
+
+                    renderTable(stocksData);
+                } else {
+                    showEmptyState();
+                }
+            } catch (error) {
+                console.error('Load error:', error);
+                showEmptyState();
+            }
+        }
+
+        function showEmptyState() {
+            document.getElementById('db-status').textContent = 'データなし';
+            document.getElementById('table-body').innerHTML = `
+                <tr>
+                    <td colspan="10" class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <p>対象となる銘柄データがありません。</p>
+                        <p>財務データを取得してください。</p>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function formatValue(value, decimals = 1) {
+            if (value === null || value === undefined) return { text: '-', class: 'no-data' };
+            return { text: value.toFixed(decimals), class: '' };
+        }
+
+        function formatOku(value) {
+            if (!value || value === 0) return { text: '-', class: 'no-data' };
+            const oku = value / 100000000;
+            return { text: oku.toFixed(1), class: '' };
+        }
+
+        function getScoreClass(score) {
+            if (score >= 80) return 'score-high';
+            if (score >= 60) return 'score-medium';
+            return 'score-low';
+        }
+
+        function getRankClass(rank) {
+            if (rank === 1) return 'rank-1';
+            if (rank === 2) return 'rank-2';
+            if (rank === 3) return 'rank-3';
+            return '';
+        }
+
+        function formatROE(value) {
+            if (value === null || value === undefined) return { text: '-', class: 'no-data' };
+            let colorClass = '';
+            if (value > 20) colorClass = 'value-good';
+            else if (value > 15) colorClass = 'value-ok';
+            return { text: value.toFixed(1), class: colorClass };
+        }
+
+        function formatPER(value) {
+            if (value === null || value === undefined) return { text: '-', class: 'no-data' };
+            let colorClass = '';
+            if (value < 10) colorClass = 'value-good';
+            else if (value < 15) colorClass = 'value-ok';
+            else if (value > 30) colorClass = 'value-bad';
+            return { text: value.toFixed(1), class: colorClass };
+        }
+
+        function formatPBR(value) {
+            if (value === null || value === undefined) return { text: '-', class: 'no-data' };
+            let colorClass = '';
+            if (value < 1) colorClass = 'value-good';
+            else if (value < 1.5) colorClass = 'value-ok';
+            else if (value > 3) colorClass = 'value-bad';
+            return { text: value.toFixed(2), class: colorClass };
+        }
+
+        function formatEquityRatio(value) {
+            if (value === null || value === undefined) return { text: '-', class: 'no-data' };
+            let colorClass = '';
+            if (value > 50) colorClass = 'value-good';
+            else if (value > 30) colorClass = 'value-ok';
+            else if (value < 20) colorClass = 'value-bad';
+            return { text: value.toFixed(1), class: colorClass };
+        }
+
+        function renderTable(stocks) {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            stocks.forEach((stock, index) => {
+                const rank = index + 1;
+                const tr = document.createElement('tr');
+
+                const price = stock.LastPrice > 0
+                    ? stock.LastPrice.toLocaleString('ja-JP', { maximumFractionDigits: 0 })
+                    : '-';
+                const marketCap = formatOku(stock.MarketCap);
+                const roe = formatROE(stock.ROE);
+                const per = formatPER(stock.PER);
+                const pbr = formatPBR(stock.PBR);
+                const equityRatio = formatEquityRatio(stock.EquityRatio);
+
+                tr.innerHTML = `
+                    <td class="rank-cell ${getRankClass(rank)}">${rank}</td>
+                    <td class="score-cell ${getScoreClass(stock.Score)}">${stock.Score.toFixed(0)}</td>
+                    <td class="code-cell">${stock.Code}</td>
+                    <td class="name-cell" title="${stock.Name}">${stock.Name}</td>
+                    <td class="number-cell">${price}</td>
+                    <td class="number-cell ${marketCap.class}">${marketCap.text}</td>
+                    <td class="number-cell ${roe.class}">${roe.text}</td>
+                    <td class="number-cell ${per.class}">${per.text}</td>
+                    <td class="number-cell ${pbr.class}">${pbr.text}</td>
+                    <td class="number-cell ${equityRatio.class}">${equityRatio.text}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 初期読み込み
+        loadData();
+    </script>
 </body>
 
 </html>

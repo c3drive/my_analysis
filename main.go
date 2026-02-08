@@ -222,9 +222,13 @@ func startServer() {
 
 		type StockWithPrice struct {
 			Stock
-			LastPrice float64 `json:"LastPrice"`
-			PriceDate *string `json:"PriceDate"`
-			MarketCap int64   `json:"MarketCap"` // 時価総額 = 株価 × 発行済株式数
+			LastPrice   float64  `json:"LastPrice"`
+			PriceDate   *string  `json:"PriceDate"`
+			MarketCap   int64    `json:"MarketCap"`   // 時価総額 = 株価 × 発行済株式数
+			PER         *float64 `json:"PER"`         // 株価収益率 = 時価総額 ÷ 純利益
+			PBR         *float64 `json:"PBR"`         // 株価純資産倍率 = 時価総額 ÷ 純資産
+			EquityRatio *float64 `json:"EquityRatio"` // 自己資本比率 = 純資産 ÷ 総資産 × 100
+			NetNetRatio *float64 `json:"NetNetRatio"` // ネットネット値 = (流動資産 - 負債) ÷ 時価総額
 		}
 
 		var stocks []StockWithPrice
@@ -245,6 +249,31 @@ func startServer() {
 			// 時価総額を計算（株価 × 発行済株式数）
 			if s.LastPrice > 0 && s.SharesIssued > 0 {
 				s.MarketCap = int64(s.LastPrice * float64(s.SharesIssued))
+			}
+
+			// 投資指標を計算
+			// PER = 時価総額 ÷ 純利益
+			if s.MarketCap > 0 && s.NetIncome > 0 {
+				per := float64(s.MarketCap) / float64(s.NetIncome)
+				s.PER = &per
+			}
+
+			// PBR = 時価総額 ÷ 純資産
+			if s.MarketCap > 0 && s.NetAssets > 0 {
+				pbr := float64(s.MarketCap) / float64(s.NetAssets)
+				s.PBR = &pbr
+			}
+
+			// 自己資本比率 = 純資産 ÷ 総資産 × 100
+			if s.TotalAssets > 0 && s.NetAssets > 0 {
+				equityRatio := float64(s.NetAssets) / float64(s.TotalAssets) * 100
+				s.EquityRatio = &equityRatio
+			}
+
+			// ネットネット値 = (流動資産 - 負債) ÷ 時価総額
+			if s.MarketCap > 0 && s.CurrentAssets > 0 {
+				netNet := float64(s.CurrentAssets-s.Liabilities) / float64(s.MarketCap)
+				s.NetNetRatio = &netNet
 			}
 
 			stocks = append(stocks, s)
@@ -292,10 +321,167 @@ func startServer() {
 		json.NewEncoder(w).Encode(prices)
 	})
 
+	// オニール成長株スクリーニングAPI
+	http.HandleFunc("/api/oneil-ranking", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		db, err := sql.Open("sqlite", "./data/stock_data.db")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer db.Close()
+
+		// 銘柄データと株価を取得
+		rows, err := db.Query(`
+			SELECT s.code, s.name, s.updated_at,
+				   COALESCE(s.net_sales, 0), COALESCE(s.operating_income, 0), COALESCE(s.net_income, 0),
+				   COALESCE(s.total_assets, 0), COALESCE(s.net_assets, 0), COALESCE(s.current_assets, 0),
+				   COALESCE(s.liabilities, 0), COALESCE(s.current_liabilities, 0),
+				   COALESCE(s.cash_and_deposits, 0), COALESCE(s.shares_issued, 0),
+				   COALESCE(p.close, 0) as last_price,
+				   p.date as price_date
+			FROM stocks s
+			LEFT JOIN (
+				SELECT code, close, date FROM stock_prices sp1
+				WHERE date = (SELECT MAX(date) FROM stock_prices sp2 WHERE sp2.code = sp1.code)
+			) p ON s.code = p.code
+			WHERE s.net_sales > 0 OR s.net_income > 0
+			ORDER BY s.code ASC`)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		type OneilStock struct {
+			Code        string   `json:"Code"`
+			Name        string   `json:"Name"`
+			Score       float64  `json:"Score"`       // 総合スコア（0-100）
+			LastPrice   float64  `json:"LastPrice"`   // 株価
+			MarketCap   int64    `json:"MarketCap"`   // 時価総額
+			NetSales    int64    `json:"NetSales"`    // 売上高
+			NetIncome   int64    `json:"NetIncome"`   // 純利益
+			ROE         *float64 `json:"ROE"`         // 自己資本利益率
+			PER         *float64 `json:"PER"`         // PER
+			PBR         *float64 `json:"PBR"`         // PBR
+			EquityRatio *float64 `json:"EquityRatio"` // 自己資本比率
+			RS          *float64 `json:"RS"`          // 相対力（簡易版）
+			UpdatedAt   string   `json:"UpdatedAt"`
+		}
+
+		var stocks []OneilStock
+		for rows.Next() {
+			var s Stock
+			var lastPrice float64
+			var priceDate sql.NullString
+			rows.Scan(&s.Code, &s.Name, &s.UpdatedAt,
+				&s.NetSales, &s.OperatingIncome, &s.NetIncome,
+				&s.TotalAssets, &s.NetAssets, &s.CurrentAssets,
+				&s.Liabilities, &s.CurrentLiabilities,
+				&s.CashAndDeposits, &s.SharesIssued,
+				&lastPrice, &priceDate)
+
+			os := OneilStock{
+				Code:      s.Code,
+				Name:      s.Name,
+				LastPrice: lastPrice,
+				NetSales:  s.NetSales,
+				NetIncome: s.NetIncome,
+				UpdatedAt: s.UpdatedAt,
+			}
+
+			// 時価総額
+			if lastPrice > 0 && s.SharesIssued > 0 {
+				os.MarketCap = int64(lastPrice * float64(s.SharesIssued))
+			}
+
+			// ROE = 純利益 / 純資産 × 100
+			if s.NetAssets > 0 && s.NetIncome > 0 {
+				roe := float64(s.NetIncome) / float64(s.NetAssets) * 100
+				os.ROE = &roe
+			}
+
+			// PER = 時価総額 / 純利益
+			if os.MarketCap > 0 && s.NetIncome > 0 {
+				per := float64(os.MarketCap) / float64(s.NetIncome)
+				os.PER = &per
+			}
+
+			// PBR = 時価総額 / 純資産
+			if os.MarketCap > 0 && s.NetAssets > 0 {
+				pbr := float64(os.MarketCap) / float64(s.NetAssets)
+				os.PBR = &pbr
+			}
+
+			// 自己資本比率 = 純資産 / 総資産 × 100
+			if s.TotalAssets > 0 && s.NetAssets > 0 {
+				equityRatio := float64(s.NetAssets) / float64(s.TotalAssets) * 100
+				os.EquityRatio = &equityRatio
+			}
+
+			// スコア計算（シンプル版）
+			// 高ROE、低PER、低PBR、高自己資本比率でスコアを増加
+			score := 50.0 // ベーススコア
+
+			if os.ROE != nil {
+				if *os.ROE > 20 {
+					score += 20
+				} else if *os.ROE > 15 {
+					score += 15
+				} else if *os.ROE > 10 {
+					score += 10
+				}
+			}
+
+			if os.PER != nil {
+				if *os.PER < 10 {
+					score += 15
+				} else if *os.PER < 15 {
+					score += 10
+				} else if *os.PER < 20 {
+					score += 5
+				}
+			}
+
+			if os.PBR != nil {
+				if *os.PBR < 1 {
+					score += 10
+				} else if *os.PBR < 1.5 {
+					score += 5
+				}
+			}
+
+			if os.EquityRatio != nil {
+				if *os.EquityRatio > 50 {
+					score += 10
+				} else if *os.EquityRatio > 30 {
+					score += 5
+				}
+			}
+
+			os.Score = score
+			stocks = append(stocks, os)
+		}
+
+		// スコア順でソート
+		for i := 0; i < len(stocks)-1; i++ {
+			for j := i + 1; j < len(stocks); j++ {
+				if stocks[j].Score > stocks[i].Score {
+					stocks[i], stocks[j] = stocks[j], stocks[i]
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(stocks)
+	})
+
 	fmt.Println("🌐 Dashboard starting at http://localhost:8080")
 	fmt.Println("📂 Serving static files from ./web/")
 	fmt.Println("📊 API endpoint: http://localhost:8080/api/stocks")
 	fmt.Println("📈 Price API: http://localhost:8080/api/prices/{code}")
+	fmt.Println("🚀 O'Neil Ranking API: http://localhost:8080/api/oneil-ranking")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
