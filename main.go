@@ -31,6 +31,8 @@ type EdinetResponse struct {
 		EntityName     string `json:"filerName"`
 		SecCode        string `json:"secCode"`
 		SubmissionDate string `json:"submissionDateTime"`
+		DocTypeCode    string `json:"docTypeCode"`
+		DocDescription string `json:"docDescription"`
 	} `json:"results"`
 }
 
@@ -132,27 +134,51 @@ func runCollector(targetDate string) {
 	}
 	defer db.Close()
 
+	// 財務データを含む書類タイプ
+	// 120=有価証券報告書, 130=訂正有価証券報告書, 140=四半期報告書, 160=半期報告書
+	financialDocTypes := map[string]bool{
+		"120": true, // 有価証券報告書
+		"130": true, // 訂正有価証券報告書
+		"140": true, // 四半期報告書
+		"160": true, // 半期報告書
+	}
+
+	processedCount := 0
+	skippedCount := 0
+	errorCount := 0
+
 	for _, doc := range edinetRes.Results {
-		if doc.SecCode != "" {
-			shortCode := doc.SecCode[:4]
-			fmt.Printf("🔍 ターゲット捕捉: %s (%s) DocID: %s\n", doc.EntityName, shortCode, doc.DocID)
-			fmt.Printf("🎯 Analyzing: %s (%s)\n", doc.EntityName, shortCode)
+		if doc.SecCode == "" {
+			continue
+		}
 
-			// XBRLをダウンロードして解析
-			data, err := downloadAndParseXBRL(doc.DocID)
-			if err != nil {
-				log.Printf("⚠️ Skip %s: %v", doc.EntityName, err)
-				data = FinancialData{} // 空データで進める
-			}
+		// 財務データを含まない書類タイプはスキップ
+		if !financialDocTypes[doc.DocTypeCode] {
+			skippedCount++
+			continue
+		}
 
-			// DBへ保存
-			err = saveStock(db, shortCode, doc.EntityName, doc.SubmissionDate, data)
-			if err != nil {
-				log.Printf("⚠️ DB save failed for %s: %v", shortCode, err)
-			}
+		shortCode := doc.SecCode[:4]
+		fmt.Printf("🔍 [%s] %s (%s) - %s\n", doc.DocTypeCode, doc.EntityName, shortCode, doc.DocDescription)
+
+		// XBRLをダウンロードして解析
+		data, err := downloadAndParseXBRL(doc.DocID)
+		if err != nil {
+			log.Printf("⚠️ Skip %s: %v", doc.EntityName, err)
+			errorCount++
+			continue // 空データでは保存しない
+		}
+
+		// DBへ保存
+		err = saveStock(db, shortCode, doc.EntityName, doc.SubmissionDate, data)
+		if err != nil {
+			log.Printf("⚠️ DB save failed for %s: %v", shortCode, err)
+			errorCount++
+		} else {
+			processedCount++
 		}
 	}
-	fmt.Println("🔥 All processes completed. Check your dashboard!")
+	fmt.Printf("\n🔥 完了! 処理=%d件, スキップ=%d件, エラー=%d件\n", processedCount, skippedCount, errorCount)
 }
 
 // saveStock は銘柄データをDBに保存する
@@ -575,18 +601,66 @@ func initDB() (*sql.DB, error) {
 }
 
 // XBRLタグと対応するフィールドのマッピング
+// EDINETのXBRL形式:
+//   - 経営指標サマリー: jpcrp_cor:XXXSummaryOfBusinessResults (contextRef="CurrentYearDuration/Instant")
+//   - 財務諸表本体: jppfs_cor:XXX (contextRef="CurrentYearDuration/Instant")
 var xbrlTagPatterns = map[string]*regexp.Regexp{
-	"NetSales":           regexp.MustCompile(`(jppfs_cor:NetSales|jpcrp_cor:NetSales|NetSales)[^>]*contextRef="[^"]*Duration[^"]*"[^>]*>(\d+)</`),
-	"OperatingRevenues":  regexp.MustCompile(`(OperatingRevenues)[^>]*contextRef="[^"]*Duration[^"]*"[^>]*>(\d+)</`),
-	"OperatingIncome":    regexp.MustCompile(`(jppfs_cor:OperatingIncome|OperatingIncome)[^>]*contextRef="[^"]*Duration[^"]*"[^>]*>(\d+)</`),
-	"NetIncome":          regexp.MustCompile(`(jppfs_cor:ProfitLoss|ProfitLoss|NetIncome)[^>]*contextRef="[^"]*Duration[^"]*"[^>]*>(\d+)</`),
-	"TotalAssets":        regexp.MustCompile(`(jppfs_cor:Assets|Assets|TotalAssets)[^>]*contextRef="[^"]*Instant[^"]*"[^>]*>(\d+)</`),
-	"NetAssets":          regexp.MustCompile(`(jppfs_cor:NetAssets|NetAssets)[^>]*contextRef="[^"]*Instant[^"]*"[^>]*>(\d+)</`),
-	"CurrentAssets":      regexp.MustCompile(`(jppfs_cor:CurrentAssets|CurrentAssets)[^>]*contextRef="[^"]*Instant[^"]*"[^>]*>(\d+)</`),
-	"Liabilities":        regexp.MustCompile(`(jppfs_cor:Liabilities|Liabilities)[^>]*contextRef="[^"]*Instant[^"]*"[^>]*>(\d+)</`),
-	"CurrentLiabilities": regexp.MustCompile(`(jppfs_cor:CurrentLiabilities|CurrentLiabilities)[^>]*contextRef="[^"]*Instant[^"]*"[^>]*>(\d+)</`),
-	"CashAndDeposits":    regexp.MustCompile(`(jppfs_cor:CashAndDeposits|CashAndDeposits)[^>]*contextRef="[^"]*Instant[^"]*"[^>]*>(\d+)</`),
-	"SharesIssued":       regexp.MustCompile(`(jpcrp_cor:TotalNumberOfIssuedSharesSummaryOfBusinessResults|NumberOfIssuedShares)[^>]*>(\d+)</`),
+	// 売上高: サマリー（連結優先）
+	"NetSales": regexp.MustCompile(`<jpcrp_cor:NetSalesSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
+	// 売上高: サマリー（非連結も含む）
+	"NetSalesFallback": regexp.MustCompile(`<jpcrp_cor:NetSalesSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
+	// 売上高: 財務諸表本体
+	"NetSalesFallback2": regexp.MustCompile(`<jppfs_cor:NetSales[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
+	// 営業収益（銀行・保険など）
+	"OperatingRevenues": regexp.MustCompile(`<jpcrp_cor:OperatingRevenue[12]SummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
+
+	// 営業利益: サマリー（連結優先）
+	"OperatingIncome":          regexp.MustCompile(`<jpcrp_cor:OperatingIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
+	"OperatingIncomeFallback":  regexp.MustCompile(`<jpcrp_cor:OperatingIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
+	"OperatingIncomeFallback2": regexp.MustCompile(`<jppfs_cor:OperatingIncome[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
+
+	// 経常利益
+	"OrdinaryIncome": regexp.MustCompile(`<jpcrp_cor:OrdinaryIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
+
+	// 純利益（親会社株主帰属）: サマリー（連結優先）
+	"NetIncome": regexp.MustCompile(`<jpcrp_cor:ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
+	// 純利益: 非連結サマリー
+	"NetIncomeFallback": regexp.MustCompile(`<jpcrp_cor:ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
+	// 純利益: 財務諸表本体
+	"NetIncomeFallback2": regexp.MustCompile(`<jppfs_cor:ProfitLoss[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
+	// 純利益: 非連結(NetIncomeLoss)
+	"NetIncomeFallback3": regexp.MustCompile(`<jpcrp_cor:NetIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
+
+	// 総資産: サマリー（連結優先）
+	"TotalAssets": regexp.MustCompile(`<jpcrp_cor:TotalAssetsSummaryOfBusinessResults[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+	// 総資産: サマリー（非連結含む）
+	"TotalAssetsFallback": regexp.MustCompile(`<jpcrp_cor:TotalAssetsSummaryOfBusinessResults[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	// 総資産: 財務諸表本体
+	"TotalAssetsFallback2": regexp.MustCompile(`<jppfs_cor:Assets[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+
+	// 純資産: サマリー（連結優先）
+	"NetAssets": regexp.MustCompile(`<jpcrp_cor:NetAssetsSummaryOfBusinessResults[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+	// 純資産: サマリー（非連結含む）
+	"NetAssetsFallback": regexp.MustCompile(`<jpcrp_cor:NetAssetsSummaryOfBusinessResults[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	// 純資産: 財務諸表
+	"NetAssetsFallback2": regexp.MustCompile(`<jppfs_cor:NetAssets[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+
+	// 流動資産
+	"CurrentAssets": regexp.MustCompile(`<jppfs_cor:CurrentAssets[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+
+	// 負債合計
+	"Liabilities": regexp.MustCompile(`<jppfs_cor:Liabilities[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+
+	// 流動負債
+	"CurrentLiabilities": regexp.MustCompile(`<jppfs_cor:CurrentLiabilities[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+
+	// 現金預金
+	"CashAndDeposits": regexp.MustCompile(`<jppfs_cor:CashAndDeposits[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+
+	// 発行済株式数: サマリー（contextRefにNonConsolidatedMember等が付く場合あり）
+	"SharesIssued": regexp.MustCompile(`<jpcrp_cor:TotalNumberOfIssuedSharesSummaryOfBusinessResults[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	// 発行済株式数フォールバック
+	"SharesIssuedFallback": regexp.MustCompile(`<jpcrp_cor:NumberOfIssuedSharesAsOfFilingDateEtcTotalNumberOfSharesEtc[^>]*>(\d+)</`),
 }
 
 // downloadAndParseXBRL はXBRLをダウンロードして財務データを抽出する
@@ -659,47 +733,76 @@ func parseXBRLFromZip(zipReader *zip.Reader) (FinancialData, error) {
 
 		// 各タグパターンを検索
 		for tagName, pattern := range xbrlTagPatterns {
-			if found[tagName] {
-				continue
-			}
-
 			matches := pattern.FindStringSubmatch(contentStr)
-			if len(matches) >= 3 {
-				value, _ := strconv.ParseInt(matches[2], 10, 64)
+			if len(matches) >= 2 {
+				value, _ := strconv.ParseInt(matches[1], 10, 64)
 				if value > 0 {
-					switch tagName {
+					// フォールバックの場合はベースタグ名を取得
+					baseName := strings.TrimSuffix(tagName, "Fallback")
+					baseName = strings.TrimSuffix(baseName, "Fallback3")
+					baseName = strings.TrimSuffix(baseName, "Fallback2")
+
+					// 既にベースタグで取得済みならスキップ
+					if found[baseName] {
+						continue
+					}
+
+					switch baseName {
 					case "NetSales", "OperatingRevenues":
 						if data.NetSales == 0 {
 							data.NetSales = value
 							found["NetSales"] = true
 						}
 					case "OperatingIncome":
-						data.OperatingIncome = value
-						found[tagName] = true
+						if data.OperatingIncome == 0 {
+							data.OperatingIncome = value
+							found["OperatingIncome"] = true
+						}
+					case "OrdinaryIncome":
+						// 経常利益 → OperatingIncomeが0なら代用
+						if data.OperatingIncome == 0 {
+							data.OperatingIncome = value
+						}
 					case "NetIncome":
-						data.NetIncome = value
-						found[tagName] = true
+						if data.NetIncome == 0 {
+							data.NetIncome = value
+							found["NetIncome"] = true
+						}
 					case "TotalAssets":
-						data.TotalAssets = value
-						found[tagName] = true
+						if data.TotalAssets == 0 {
+							data.TotalAssets = value
+							found["TotalAssets"] = true
+						}
 					case "NetAssets":
-						data.NetAssets = value
-						found[tagName] = true
+						if data.NetAssets == 0 {
+							data.NetAssets = value
+							found["NetAssets"] = true
+						}
 					case "CurrentAssets":
-						data.CurrentAssets = value
-						found[tagName] = true
+						if data.CurrentAssets == 0 {
+							data.CurrentAssets = value
+							found["CurrentAssets"] = true
+						}
 					case "Liabilities":
-						data.Liabilities = value
-						found[tagName] = true
+						if data.Liabilities == 0 {
+							data.Liabilities = value
+							found["Liabilities"] = true
+						}
 					case "CurrentLiabilities":
-						data.CurrentLiabilities = value
-						found[tagName] = true
+						if data.CurrentLiabilities == 0 {
+							data.CurrentLiabilities = value
+							found["CurrentLiabilities"] = true
+						}
 					case "CashAndDeposits":
-						data.CashAndDeposits = value
-						found[tagName] = true
+						if data.CashAndDeposits == 0 {
+							data.CashAndDeposits = value
+							found["CashAndDeposits"] = true
+						}
 					case "SharesIssued":
-						data.SharesIssued = value
-						found[tagName] = true
+						if data.SharesIssued == 0 {
+							data.SharesIssued = value
+							found["SharesIssued"] = true
+						}
 					}
 				}
 			}
@@ -711,8 +814,8 @@ func parseXBRLFromZip(zipReader *zip.Reader) (FinancialData, error) {
 		return data, fmt.Errorf("no financial data found in XBRL")
 	}
 
-	fmt.Printf("    📊 抽出: 売上=%d, 営業利益=%d, 純利益=%d, 総資産=%d, 純資産=%d\n",
-		data.NetSales, data.OperatingIncome, data.NetIncome, data.TotalAssets, data.NetAssets)
+	fmt.Printf("    📊 抽出: 売上=%d, 営業利益=%d, 純利益=%d, 総資産=%d, 純資産=%d, 株式数=%d\n",
+		data.NetSales, data.OperatingIncome, data.NetIncome, data.TotalAssets, data.NetAssets, data.SharesIssued)
 
 	return data, nil
 }
@@ -761,25 +864,48 @@ func parseLocalFile(filePath string) (FinancialData, error) {
 
 	var data FinancialData
 	contentStr := string(content)
+	found := make(map[string]bool)
 
 	for tagName, pattern := range xbrlTagPatterns {
 		matches := pattern.FindStringSubmatch(contentStr)
-		if len(matches) >= 3 {
-			value, _ := strconv.ParseInt(matches[2], 10, 64)
+		if len(matches) >= 2 {
+			value, _ := strconv.ParseInt(matches[1], 10, 64)
 			if value > 0 {
-				switch tagName {
+				baseName := strings.TrimSuffix(tagName, "Fallback")
+				baseName = strings.TrimSuffix(baseName, "Fallback2")
+				if found[baseName] {
+					continue
+				}
+				switch baseName {
 				case "NetSales", "OperatingRevenues":
 					if data.NetSales == 0 {
 						data.NetSales = value
+						found["NetSales"] = true
 					}
 				case "OperatingIncome":
-					data.OperatingIncome = value
+					if data.OperatingIncome == 0 {
+						data.OperatingIncome = value
+						found["OperatingIncome"] = true
+					}
+				case "OrdinaryIncome":
+					if data.OperatingIncome == 0 {
+						data.OperatingIncome = value
+					}
 				case "NetIncome":
-					data.NetIncome = value
+					if data.NetIncome == 0 {
+						data.NetIncome = value
+						found["NetIncome"] = true
+					}
 				case "TotalAssets":
-					data.TotalAssets = value
+					if data.TotalAssets == 0 {
+						data.TotalAssets = value
+						found["TotalAssets"] = true
+					}
 				case "NetAssets":
-					data.NetAssets = value
+					if data.NetAssets == 0 {
+						data.NetAssets = value
+						found["NetAssets"] = true
+					}
 				case "CurrentAssets":
 					data.CurrentAssets = value
 				case "Liabilities":
@@ -789,7 +915,10 @@ func parseLocalFile(filePath string) (FinancialData, error) {
 				case "CashAndDeposits":
 					data.CashAndDeposits = value
 				case "SharesIssued":
-					data.SharesIssued = value
+					if data.SharesIssued == 0 {
+						data.SharesIssued = value
+						found["SharesIssued"] = true
+					}
 				}
 			}
 		}
