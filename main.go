@@ -82,8 +82,10 @@ type StockPrice struct {
 }
 
 func main() {
-	mode := flag.String("mode", "run", "execution mode: run (fetch EDINET), serve (web), fetch-prices (stock prices), or test-parse")
-	dateFlag := flag.String("date", "2025-12-25", "target date for run mode (YYYY-MM-DD)")
+	mode := flag.String("mode", "run", "execution mode: run, batch, serve, fetch-prices, or test-parse")
+	dateFlag := flag.String("date", time.Now().Format("2006-01-02"), "target date for run mode (YYYY-MM-DD)")
+	fromFlag := flag.String("from", "", "start date for batch mode (YYYY-MM-DD)")
+	toFlag := flag.String("to", "", "end date for batch mode (YYYY-MM-DD)")
 	flag.Parse()
 
 	switch *mode {
@@ -91,6 +93,8 @@ func main() {
 		testLocalParse()
 	case "run":
 		runCollector(*dateFlag)
+	case "batch":
+		runBatch(*fromFlag, *toFlag)
 	case "serve":
 		startServer()
 	case "fetch-prices":
@@ -98,6 +102,50 @@ func main() {
 	default:
 		log.Fatalf("Unknown mode: %s", *mode)
 	}
+}
+
+// runBatch は過去の日付範囲を一括で取得するバッチモード
+func runBatch(fromStr, toStr string) {
+	if fromStr == "" || toStr == "" {
+		log.Fatalf("batch mode requires -from and -to flags. Example: -mode=batch -from=2025-04-01 -to=2026-02-22")
+	}
+
+	fromDate, err := time.Parse("2006-01-02", fromStr)
+	if err != nil {
+		log.Fatalf("Invalid -from date: %v", err)
+	}
+	toDate, err := time.Parse("2006-01-02", toStr)
+	if err != nil {
+		log.Fatalf("Invalid -to date: %v", err)
+	}
+
+	if fromDate.After(toDate) {
+		log.Fatalf("-from date must be before -to date")
+	}
+
+	totalDays := int(toDate.Sub(fromDate).Hours()/24) + 1
+	fmt.Printf("🚀 バッチモード: %s 〜 %s (%d日間)\n\n", fromStr, toStr, totalDays)
+
+	totalProcessed := 0
+	totalErrors := 0
+
+	for d := fromDate; !d.After(toDate); d = d.AddDate(0, 0, 1) {
+		dateStr := d.Format("2006-01-02")
+		// 土日はEDINET提出なしのためスキップ
+		if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
+			fmt.Printf("⏭️ %s (%s) スキップ（休日）\n", dateStr, d.Weekday())
+			continue
+		}
+
+		fmt.Printf("\n━━━ %s (%s) ━━━\n", dateStr, d.Weekday())
+		runCollector(dateStr)
+		totalProcessed++
+
+		// EDINET APIレートリミット対策
+		time.Sleep(1 * time.Second)
+	}
+
+	fmt.Printf("\n🔥 バッチ完了! 処理日数=%d, エラー=%d\n", totalProcessed, totalErrors)
 }
 
 // --- 収集ロジック ---
@@ -253,6 +301,8 @@ func startServer() {
 			MarketCap   int64    `json:"MarketCap"`   // 時価総額 = 株価 × 発行済株式数
 			PER         *float64 `json:"PER"`         // 株価収益率 = 時価総額 ÷ 純利益
 			PBR         *float64 `json:"PBR"`         // 株価純資産倍率 = 時価総額 ÷ 純資産
+			EPS         *float64 `json:"EPS"`         // 1株当たり利益 = 純利益 ÷ 発行済株式数
+			ROE         *float64 `json:"ROE"`         // 自己資本利益率 = 純利益 ÷ 純資産 × 100
 			EquityRatio *float64 `json:"EquityRatio"` // 自己資本比率 = 純資産 ÷ 総資産 × 100
 			NetNetRatio *float64 `json:"NetNetRatio"` // ネットネット値 = (流動資産 - 負債) ÷ 時価総額
 		}
@@ -288,6 +338,18 @@ func startServer() {
 			if s.MarketCap > 0 && s.NetAssets > 0 {
 				pbr := float64(s.MarketCap) / float64(s.NetAssets)
 				s.PBR = &pbr
+			}
+
+			// EPS = 純利益 ÷ 発行済株式数
+			if s.NetIncome > 0 && s.SharesIssued > 0 {
+				eps := float64(s.NetIncome) / float64(s.SharesIssued)
+				s.EPS = &eps
+			}
+
+			// ROE = 純利益 ÷ 純資産 × 100
+			if s.NetIncome > 0 && s.NetAssets > 0 {
+				roe := float64(s.NetIncome) / float64(s.NetAssets) * 100
+				s.ROE = &roe
 			}
 
 			// 自己資本比率 = 純資産 ÷ 総資産 × 100
@@ -388,6 +450,7 @@ func startServer() {
 			MarketCap   int64    `json:"MarketCap"`   // 時価総額
 			NetSales    int64    `json:"NetSales"`    // 売上高
 			NetIncome   int64    `json:"NetIncome"`   // 純利益
+			EPS         *float64 `json:"EPS"`         // 1株当たり利益
 			ROE         *float64 `json:"ROE"`         // 自己資本利益率
 			PER         *float64 `json:"PER"`         // PER
 			PBR         *float64 `json:"PBR"`         // PBR
@@ -420,6 +483,12 @@ func startServer() {
 			// 時価総額
 			if lastPrice > 0 && s.SharesIssued > 0 {
 				os.MarketCap = int64(lastPrice * float64(s.SharesIssued))
+			}
+
+			// EPS = 純利益 / 発行済株式数
+			if s.NetIncome > 0 && s.SharesIssued > 0 {
+				eps := float64(s.NetIncome) / float64(s.SharesIssued)
+				os.EPS = &eps
 			}
 
 			// ROE = 純利益 / 純資産 × 100

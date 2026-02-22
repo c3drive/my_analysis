@@ -3,6 +3,9 @@ name: Deploy GitHub Pages
 on:
   push:
     branches: ["main"]
+  workflow_run:
+    workflows: ["Daily Stock Data Update"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -13,6 +16,8 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # workflow_run の場合は成功時のみデプロイ
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,16 +27,62 @@ jobs:
         with:
           go-version: '1.23'
 
-      - name: Generate Database
+      - name: Download latest DB from release
+        continue-on-error: true
         run: |
           mkdir -p data
-          go run main.go -mode=run -date=2025-11-13
+          LATEST_TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.tag_name')
+          
+          if [ "$LATEST_TAG" != "null" ] && [ "$LATEST_TAG" != "" ]; then
+            echo "📥 Downloading DB from release: $LATEST_TAG"
+            curl -L -o data/stock_data.db.gz \
+              "https://github.com/${{ github.repository }}/releases/download/$LATEST_TAG/stock_data.db.gz" \
+              || echo "⚠️ Download failed"
+            
+            if [ -f data/stock_data.db.gz ]; then
+              gunzip data/stock_data.db.gz
+              echo "✅ Database restored from release $LATEST_TAG"
+              # DB内容を確認
+              echo "📊 DB stats:"
+              go run -mod=mod <<'GOEOF'
+package main
+import (
+    "database/sql"
+    "fmt"
+    _ "modernc.org/sqlite"
+)
+func main() {
+    db, err := sql.Open("sqlite", "./data/stock_data.db")
+    if err != nil { fmt.Println("DB open error:", err); return }
+    defer db.Close()
+    var count int
+    db.QueryRow("SELECT COUNT(*) FROM stocks").Scan(&count)
+    fmt.Printf("  Total stocks: %d\n", count)
+    var withSales int
+    db.QueryRow("SELECT COUNT(*) FROM stocks WHERE net_sales > 0").Scan(&withSales)
+    fmt.Printf("  With sales data: %d\n", withSales)
+    var priceCount int
+    db.QueryRow("SELECT COUNT(DISTINCT code) FROM stock_prices").Scan(&priceCount)
+    fmt.Printf("  With price data: %d\n", priceCount)
+}
+GOEOF
+            fi
+          else
+            echo "ℹ️ No previous release found"
+          fi
+
+      - name: Fallback - Generate fresh data if no DB
+        if: ${{ hashFiles('data/stock_data.db') == '' }}
+        run: |
+          mkdir -p data
+          TODAY=$(date -u +%Y-%m-%d)
+          echo "🚀 No existing DB, fetching fresh data for: $TODAY"
+          go run main.go -mode=run -date=$TODAY
         env:
           EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
 
       - name: Generate JSON for GitHub Pages
         run: |
-          # 一時的なGoファイルを作成する
           cat <<'EOF' > gen_json.go
           package main
           import (
@@ -41,31 +92,75 @@ jobs:
               "os"
               _ "modernc.org/sqlite"
           )
-          type Stock struct {
-              Code      string `json:"Code"`
-              Name      string `json:"Name"`
-              NetSales  int64  `json:"NetSales"`
-              UpdatedAt string `json:"UpdatedAt"`
+          type StockJSON struct {
+              Code              string  `json:"Code"`
+              Name              string  `json:"Name"`
+              UpdatedAt         string  `json:"UpdatedAt"`
+              NetSales          int64   `json:"NetSales"`
+              OperatingIncome   int64   `json:"OperatingIncome"`
+              NetIncome         int64   `json:"NetIncome"`
+              TotalAssets       int64   `json:"TotalAssets"`
+              NetAssets          int64   `json:"NetAssets"`
+              CurrentAssets     int64   `json:"CurrentAssets"`
+              Liabilities       int64   `json:"Liabilities"`
+              CurrentLiabilities int64  `json:"CurrentLiabilities"`
+              CashAndDeposits   int64   `json:"CashAndDeposits"`
+              SharesIssued      int64   `json:"SharesIssued"`
+              LastPrice         float64 `json:"LastPrice"`
+              PriceDate         *string `json:"PriceDate"`
           }
           func main() {
               db, err := sql.Open("sqlite", "./data/stock_data.db")
               if err != nil { fmt.Println("DB open error:", err); os.Exit(1) }
               defer db.Close()
-              rows, err := db.Query("SELECT code, name, COALESCE(net_sales, 0), COALESCE(updated_at, '') FROM stocks ORDER BY code ASC")
+
+              rows, err := db.Query(`
+                  SELECT s.code, s.name, COALESCE(s.updated_at, ''),
+                      COALESCE(s.net_sales, 0), COALESCE(s.operating_income, 0), COALESCE(s.net_income, 0),
+                      COALESCE(s.total_assets, 0), COALESCE(s.net_assets, 0), COALESCE(s.current_assets, 0),
+                      COALESCE(s.liabilities, 0), COALESCE(s.current_liabilities, 0),
+                      COALESCE(s.cash_and_deposits, 0), COALESCE(s.shares_issued, 0),
+                      COALESCE(p.close, 0), p.date
+                  FROM stocks s
+                  LEFT JOIN (
+                      SELECT code, close, date,
+                          ROW_NUMBER() OVER (PARTITION BY code ORDER BY date DESC) as rn
+                      FROM stock_prices
+                  ) p ON s.code = p.code AND p.rn = 1
+                  ORDER BY s.code ASC
+              `)
               if err != nil { fmt.Println("Query error:", err); os.Exit(1) }
               defer rows.Close()
-              var stocks []Stock
+              
+              var stocks []StockJSON
               for rows.Next() {
-                  var s Stock
-                  rows.Scan(&s.Code, &s.Name, &s.NetSales, &s.UpdatedAt)
+                  var s StockJSON
+                  var priceDate sql.NullString
+                  rows.Scan(&s.Code, &s.Name, &s.UpdatedAt,
+                      &s.NetSales, &s.OperatingIncome, &s.NetIncome,
+                      &s.TotalAssets, &s.NetAssets, &s.CurrentAssets,
+                      &s.Liabilities, &s.CurrentLiabilities,
+                      &s.CashAndDeposits, &s.SharesIssued,
+                      &s.LastPrice, &priceDate)
+                  if priceDate.Valid {
+                      s.PriceDate = &priceDate.String
+                  }
                   stocks = append(stocks, s)
               }
               jsonData, _ := json.MarshalIndent(stocks, "", "  ")
               os.WriteFile("./web/stocks.json", jsonData, 0644)
-              fmt.Printf("Generated stocks.json with %d records\n", len(stocks))
+              fmt.Printf("✅ Generated stocks.json with %d records\n", len(stocks))
+              
+              // 統計情報を出力
+              withSales := 0
+              withPrice := 0
+              for _, s := range stocks {
+                  if s.NetSales > 0 { withSales++ }
+                  if s.LastPrice > 0 { withPrice++ }
+              }
+              fmt.Printf("  With sales: %d, With price: %d\n", withSales, withPrice)
           }
           EOF
-          # 依存関係を整理して実行しろ
           go mod tidy
           go run gen_json.go
 

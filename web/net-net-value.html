@@ -15,29 +15,41 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            background: linear-gradient(135deg, #0a0f1e 0%, #0d1b2a 50%, #1b2838 100%);
             min-height: 100vh;
             color: #e0e0e0;
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 30px;
         }
 
         header {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(12px);
             border-radius: 16px;
             padding: 30px;
             margin-bottom: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 136, 0.15);
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ff88, #00d9ff, transparent);
         }
 
         h1 {
             font-size: 2rem;
-            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            background: linear-gradient(135deg, #00ff88, #00d9ff, #7b61ff);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -45,7 +57,7 @@
         }
 
         .subtitle {
-            color: #a0a0a0;
+            color: #8899aa;
             font-size: 1rem;
         }
 
@@ -61,134 +73,544 @@
             text-decoration: none;
             padding: 10px 20px;
             border-radius: 8px;
-            background: rgba(0, 217, 255, 0.1);
-            border: 1px solid rgba(0, 217, 255, 0.3);
+            background: rgba(0, 217, 255, 0.08);
+            border: 1px solid rgba(0, 217, 255, 0.2);
             transition: all 0.3s ease;
             font-size: 0.9rem;
         }
 
-        .nav a:hover,
+        .nav a:hover {
+            background: rgba(0, 217, 255, 0.15);
+            border-color: rgba(0, 217, 255, 0.5);
+            transform: translateY(-1px);
+        }
+
         .nav a.active {
-            background: rgba(0, 217, 255, 0.2);
-            border-color: #00d9ff;
-            box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+            background: rgba(0, 255, 136, 0.15);
+            border-color: #00ff88;
+            color: #00ff88;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
         }
 
-        .info-box {
-            background: rgba(0, 217, 255, 0.1);
-            border: 1px solid rgba(0, 217, 255, 0.3);
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 30px;
+        /* Layout: sidebar + main */
+        .content-layout {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 25px;
         }
 
-        .info-box h2 {
-            color: #00d9ff;
-            font-size: 1.2rem;
-            margin-bottom: 15px;
+        @media (max-width: 1100px) {
+            .content-layout {
+                grid-template-columns: 1fr;
+            }
         }
 
-        .info-box p {
-            line-height: 1.8;
-            color: #b0b0b0;
+        /* Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
 
-        .formula {
-            background: rgba(0, 0, 0, 0.3);
+        .panel {
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 14px;
+            padding: 22px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .panel h3 {
+            font-size: 0.95rem;
+            color: #00ff88;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .formula-box {
+            background: rgba(0, 255, 136, 0.06);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 10px;
             padding: 20px;
-            border-radius: 8px;
-            margin: 15px 0;
             font-family: 'Courier New', monospace;
             color: #00ff88;
             text-align: center;
-            font-size: 1.1rem;
+            font-size: 0.9rem;
+            line-height: 2;
         }
 
-        .status-bar {
+        .formula-box .highlight {
+            color: #00d9ff;
+            font-weight: bold;
+        }
+
+        .formula-box .dim {
+            color: #556677;
+        }
+
+        /* Coefficient sliders */
+        .coeff-group {
+            margin-bottom: 16px;
+        }
+
+        .coeff-label {
             display: flex;
-            gap: 30px;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 20px;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            margin-bottom: 6px;
+            color: #99aabb;
+        }
+
+        .coeff-value {
+            color: #00d9ff;
+            font-weight: 600;
+            font-family: 'Courier New', monospace;
+            min-width: 40px;
+            text-align: right;
+        }
+
+        .coeff-slider {
+            width: 100%;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+            cursor: pointer;
+        }
+
+        .coeff-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00d9ff;
+            cursor: pointer;
+            border: 2px solid #0d1b2a;
+            box-shadow: 0 0 8px rgba(0, 217, 255, 0.5);
+            transition: all 0.2s ease;
+        }
+
+        .coeff-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 12px rgba(0, 217, 255, 0.8);
+        }
+
+        .coeff-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00d9ff;
+            cursor: pointer;
+            border: 2px solid #0d1b2a;
+        }
+
+        .btn-recalc {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(0, 255, 136, 0.4);
+            background: rgba(0, 255, 136, 0.1);
+            color: #00ff88;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .btn-recalc:hover {
+            background: rgba(0, 255, 136, 0.2);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .btn-reset {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: transparent;
+            color: #667788;
+            font-size: 0.8rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 6px;
+        }
+
+        .btn-reset:hover {
+            border-color: rgba(255, 255, 255, 0.3);
+            color: #99aabb;
+        }
+
+        /* Summary Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.04);
             border-radius: 12px;
-            margin-bottom: 30px;
+            padding: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(0, 255, 136, 0.3);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: #667788;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+
+        .stat-value.green {
+            color: #00ff88;
+        }
+
+        .stat-value.blue {
+            color: #00d9ff;
+        }
+
+        .stat-value.gold {
+            color: #ffd700;
+        }
+
+        .stat-value.red {
+            color: #ff6b6b;
+        }
+
+        .stat-sub {
+            font-size: 0.75rem;
+            color: #556677;
+            margin-top: 4px;
+        }
+
+        /* Main content area */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        /* Table */
+        .table-container {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 14px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .table-header {
+            padding: 18px 22px;
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .table-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #ddeeff;
+        }
+
+        .table-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
             flex-wrap: wrap;
         }
 
-        .status-item {
-            display: flex;
-            flex-direction: column;
+        .search-input {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 8px;
+            padding: 8px 14px;
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            width: 220px;
+            transition: all 0.3s ease;
         }
 
-        .status-label {
+        .search-input:focus {
+            outline: none;
+            border-color: #00d9ff;
+            box-shadow: 0 0 12px rgba(0, 217, 255, 0.2);
+        }
+
+        .search-input::placeholder {
+            color: #445566;
+        }
+
+        .filter-select {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 8px;
+            padding: 8px 14px;
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        .filter-select option {
+            background: #1a1a2e;
+        }
+
+        .table-count {
+            color: #556677;
+            font-size: 0.85rem;
+        }
+
+        .table-scroll {
+            max-height: 650px;
+            overflow-y: auto;
+        }
+
+        .table-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .table-scroll::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        .table-scroll::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 136, 0.2);
+            border-radius: 3px;
+        }
+
+        .table-scroll::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 255, 136, 0.4);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 13px 14px;
+            text-align: left;
+            font-weight: 600;
+            color: #00d9ff;
             font-size: 0.8rem;
-            color: #888;
-            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            cursor: pointer;
+            user-select: none;
         }
 
-        .status-value {
-            font-size: 1.3rem;
-            font-weight: bold;
+        th:hover {
+            background: rgba(0, 217, 255, 0.08);
+        }
+
+        th.sorted-asc::after {
+            content: ' ↑';
             color: #00ff88;
         }
 
-        .coming-soon {
+        th.sorted-desc::after {
+            content: ' ↓';
+            color: #00ff88;
+        }
+
+        td {
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.88rem;
+        }
+
+        tr:hover {
+            background: rgba(0, 255, 136, 0.04);
+        }
+
+        .rank-cell {
+            font-weight: 700;
+            text-align: center;
+            width: 50px;
+        }
+
+        .rank-1 {
+            color: #ffd700;
+            font-size: 1.1rem;
+        }
+
+        .rank-2 {
+            color: #c0c0c0;
+        }
+
+        .rank-3 {
+            color: #cd7f32;
+        }
+
+        .code-cell {
+            font-family: 'Courier New', monospace;
+            color: #00d9ff;
+            font-weight: 600;
+        }
+
+        .name-cell {
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .number-cell {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+
+        .value-ultra {
+            color: #00ff88 !important;
+            font-weight: 700;
+            text-shadow: 0 0 8px rgba(0, 255, 136, 0.4);
+        }
+
+        .value-good {
+            color: #00ff88 !important;
+            font-weight: 600;
+        }
+
+        .value-ok {
+            color: #ffd700 !important;
+        }
+
+        .value-warn {
+            color: #ff9944 !important;
+        }
+
+        .value-bad {
+            color: #ff6b6b !important;
+        }
+
+        .no-data {
+            color: #334455;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-netnet {
+            background: rgba(0, 255, 136, 0.15);
+            color: #00ff88;
+            border: 1px solid rgba(0, 255, 136, 0.3);
+        }
+
+        .badge-caution {
+            background: rgba(255, 107, 107, 0.15);
+            color: #ff6b6b;
+            border: 1px solid rgba(255, 107, 107, 0.3);
+        }
+
+        /* Loading & Empty states */
+        .loading-container {
             text-align: center;
             padding: 80px 40px;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 16px;
-            border: 2px dashed rgba(255, 255, 255, 0.1);
         }
 
-        .coming-soon-icon {
-            font-size: 4rem;
-            margin-bottom: 20px;
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(0, 255, 136, 0.15);
+            border-top-color: #00ff88;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
         }
 
-        .coming-soon h3 {
-            font-size: 1.5rem;
-            color: #666;
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loading-text {
+            color: #556677;
+            font-size: 0.95rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 80px 40px;
+            color: #445566;
+        }
+
+        .empty-icon {
+            font-size: 3rem;
             margin-bottom: 15px;
         }
 
-        .coming-soon p {
-            color: #555;
-            max-width: 500px;
-            margin: 0 auto;
-            line-height: 1.8;
+        /* Tooltip */
+        .tooltip-trigger {
+            position: relative;
+            cursor: help;
+            border-bottom: 1px dotted #556677;
         }
 
-        .requirements {
-            margin-top: 30px;
-            text-align: left;
-            display: inline-block;
-        }
-
-        .requirements h4 {
-            color: #888;
-            margin-bottom: 15px;
-            font-size: 0.9rem;
-        }
-
-        .requirements ul {
-            list-style: none;
-        }
-
-        .requirements li {
-            padding: 8px 0;
-            color: #666;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .requirements li::before {
-            content: '○';
-            color: #444;
-        }
-
-        .requirements li.done::before {
-            content: '✓';
+        /* Export button */
+        .export-btn {
+            background: rgba(0, 255, 136, 0.08);
+            border: 1px solid rgba(0, 255, 136, 0.25);
+            border-radius: 8px;
+            padding: 8px 16px;
             color: #00ff88;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .export-btn:hover {
+            background: rgba(0, 255, 136, 0.15);
+            box-shadow: 0 0 12px rgba(0, 255, 136, 0.2);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-in {
+            animation: fadeIn 0.4s ease-out;
         }
     </style>
 </head>
@@ -197,7 +619,7 @@
     <div class="container">
         <header>
             <h1>💎 ネットネット分析</h1>
-            <p class="subtitle">ベンジャミン・グレアム流バリュー投資スクリーニング</p>
+            <p class="subtitle">ベンジャミン・グレアム流バリュー投資スクリーニング — NCAV (正味流動資産価値) ベース</p>
 
             <nav class="nav">
                 <a href="index.html">📊 基本ダッシュボード</a>
@@ -207,55 +629,503 @@
             </nav>
         </header>
 
-        <div class="info-box">
-            <h2>📖 ネットネットバリューとは？</h2>
-            <p>
-                ベンジャミン・グレアムが提唱した割安株の発見手法です。
-                企業の流動資産から総負債を差し引いた「正味流動資産価値（NCAV）」が、
-                時価総額を上回る銘柄を探します。
-            </p>
-            <div class="formula">
-                ネットネットバリュー = (流動資産 − 総負債) ÷ 発行済株式数
-            </div>
-            <p>
-                この値が現在の株価を上回っている場合、その株は「タダより安い」と言えます。
-                ただし、必ずしも割安 ＝ 優良ではないため、業績トレンドと合わせて判断が必要です。
-            </p>
-        </div>
+        <div class="content-layout">
+            <!-- Sidebar: Formula & Coefficients -->
+            <div class="sidebar">
+                <div class="panel">
+                    <h3>📐 計算式</h3>
+                    <div class="formula-box">
+                        <div><span class="highlight">NCAV</span> = 流動資産 − 総負債</div>
+                        <div class="dim">───────────────</div>
+                        <div><span class="highlight">ネットネット比率</span> = NCAV ÷ 時価総額</div>
+                        <div class="dim">───────────────</div>
+                        <div style="font-size: 0.8rem; color: #8899aa; margin-top: 8px;">
+                            比率 > 1.0 → 💎 超割安<br>
+                            比率 > 0.67 → グレアム基準クリア
+                        </div>
+                    </div>
+                </div>
 
-        <div class="status-bar">
-            <div class="status-item">
-                <span class="status-label">機能ステータス</span>
-                <span class="status-value" style="color: #ffa500;">🔧 開発中</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">必要データ</span>
-                <span class="status-value" style="color: #888;">流動資産・負債・株価</span>
-            </div>
-        </div>
+                <div class="panel">
+                    <h3>⚙️ 資産係数（カスタム計算）</h3>
+                    <p style="font-size: 0.78rem; color: #556677; margin-bottom: 15px;">
+                        各資産カテゴリの評価係数を調整してスペシャルPBRを計算
+                    </p>
 
-        <div class="coming-soon">
-            <div class="coming-soon-icon">🚧</div>
-            <h3>この機能は現在開発中です</h3>
-            <p>
-                ネットネット分析機能を利用するには、追加のデータ取得と計算ロジックの実装が必要です。
-            </p>
+                    <div class="coeff-group">
+                        <div class="coeff-label">
+                            <span>💴 現金・預金</span>
+                            <span class="coeff-value" id="coeff-cash-val">1.00</span>
+                        </div>
+                        <input type="range" class="coeff-slider" id="coeff-cash" min="0" max="1" step="0.05"
+                            value="1.00">
+                    </div>
 
-            <div class="requirements">
-                <h4>実装に必要な項目:</h4>
-                <ul>
-                    <li class="done">EDINET APIからの書類取得</li>
-                    <li class="done">XBRLパース基盤</li>
-                    <li class="done">流動資産（CurrentAssets）の抽出</li>
-                    <li class="done">流動負債（CurrentLiabilities）の抽出</li>
-                    <li class="done">総負債（Liabilities）の抽出</li>
-                    <li>株価データの取得</li>
-                    <li class="done">発行済株式数の取得</li>
-                    <li>ネットネット計算ロジック</li>
-                </ul>
+                    <div class="coeff-group">
+                        <div class="coeff-label">
+                            <span>📄 流動資産（現金除く）</span>
+                            <span class="coeff-value" id="coeff-current-val">0.75</span>
+                        </div>
+                        <input type="range" class="coeff-slider" id="coeff-current" min="0" max="1" step="0.05"
+                            value="0.75">
+                    </div>
+
+                    <div class="coeff-group">
+                        <div class="coeff-label">
+                            <span>🏢 固定資産</span>
+                            <span class="coeff-value" id="coeff-fixed-val">0.50</span>
+                        </div>
+                        <input type="range" class="coeff-slider" id="coeff-fixed" min="0" max="1" step="0.05"
+                            value="0.50">
+                    </div>
+
+                    <div class="coeff-group">
+                        <div class="coeff-label">
+                            <span>⚠️ 負債割引</span>
+                            <span class="coeff-value" id="coeff-liab-val">1.00</span>
+                        </div>
+                        <input type="range" class="coeff-slider" id="coeff-liab" min="0.5" max="1.5" step="0.05"
+                            value="1.00">
+                    </div>
+
+                    <button class="btn-recalc" id="btn-recalc" onclick="recalculate()">🔄 再計算</button>
+                    <button class="btn-reset" onclick="resetCoefficients()">デフォルトに戻す</button>
+                </div>
+
+                <div class="panel">
+                    <h3>📖 グレアムの基準</h3>
+                    <div style="font-size: 0.82rem; color: #8899aa; line-height: 1.8;">
+                        <p><strong style="color: #00ff88;">ネットネット株</strong>: NCAV > 時価総額（比率 >
+                            1.0）の銘柄は、仮に会社を清算しても株主にお金が戻る「タダより安い」状態。</p>
+                        <p style="margin-top: 10px;"><strong style="color: #ffd700;">グレアム基準</strong>: 比率 ≥
+                            0.67（2/3）を推奨。安全マージンを確保。</p>
+                        <p style="margin-top: 10px; color: #667788;">⚠️ 低い自己資本比率やマイナス利益の銘柄には注意が必要です。</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="main-content">
+                <div class="stats-grid" id="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">ネットネット株数</div>
+                        <div class="stat-value green" id="stat-netnet">-</div>
+                        <div class="stat-sub">NCAV > 時価総額</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">グレアム基準クリア</div>
+                        <div class="stat-value gold" id="stat-graham">-</div>
+                        <div class="stat-sub">比率 ≥ 0.67</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">分析対象</div>
+                        <div class="stat-value blue" id="stat-total">-</div>
+                        <div class="stat-sub">データあり銘柄</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">最高ネットネット比率</div>
+                        <div class="stat-value green" id="stat-max-ratio">-</div>
+                        <div class="stat-sub" id="stat-max-name">-</div>
+                    </div>
+                </div>
+
+                <div class="table-container animate-in">
+                    <div class="table-header">
+                        <span class="table-title">💎 ネットネットバリュー ランキング</span>
+                        <div class="table-controls">
+                            <input type="text" id="search-input" placeholder="🔍 コード / 企業名" class="search-input">
+                            <select id="filter-select" class="filter-select">
+                                <option value="all">すべて表示</option>
+                                <option value="netnet">ネットネット株のみ (>1.0)</option>
+                                <option value="graham">グレアム基準 (≥0.67)</option>
+                                <option value="positive">NCAV正の銘柄</option>
+                            </select>
+                            <button class="export-btn" id="export-csv" onclick="exportCSV()">📥 CSV</button>
+                        </div>
+                        <span class="table-count" id="table-count"></span>
+                    </div>
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th data-sort="rank">順位</th>
+                                    <th data-sort="Code">コード</th>
+                                    <th data-sort="Name">企業名</th>
+                                    <th data-sort="netNetRatio">ネットネット比率</th>
+                                    <th data-sort="specialPBR">SP-PBR</th>
+                                    <th data-sort="ncavPerShare">NCAV/株</th>
+                                    <th data-sort="LastPrice">株価</th>
+                                    <th data-sort="MarketCap">時価総額(億)</th>
+                                    <th data-sort="CurrentAssets">流動資産(億)</th>
+                                    <th data-sort="Liabilities">負債(億)</th>
+                                    <th data-sort="CashAndDeposits">現金(億)</th>
+                                    <th data-sort="EquityRatio">自己資本(%)</th>
+                                    <th data-sort="PBR">PBR</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body">
+                                <tr>
+                                    <td colspan="13" class="loading-container">
+                                        <div class="loading-spinner"></div>
+                                        <div class="loading-text">データを読み込んでいます...</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+
+    <script>
+        // Global state
+        let rawStocks = [];
+        let processedStocks = [];
+        let currentSort = { key: 'netNetRatio', order: 'desc' };
+        let searchTerm = '';
+        let filterMode = 'all';
+
+        // Coefficients
+        let coefficients = {
+            cash: 1.00,
+            current: 0.75,
+            fixed: 0.50,
+            liab: 1.00
+        };
+
+        // Initialize
+        async function init() {
+            setupSliders();
+            setupSearch();
+            await loadData();
+        }
+
+        function setupSliders() {
+            const sliders = [
+                { id: 'coeff-cash', key: 'cash' },
+                { id: 'coeff-current', key: 'current' },
+                { id: 'coeff-fixed', key: 'fixed' },
+                { id: 'coeff-liab', key: 'liab' },
+            ];
+
+            sliders.forEach(({ id, key }) => {
+                const slider = document.getElementById(id);
+                const display = document.getElementById(id + '-val');
+                slider.addEventListener('input', () => {
+                    coefficients[key] = parseFloat(slider.value);
+                    display.textContent = parseFloat(slider.value).toFixed(2);
+                });
+            });
+        }
+
+        function setupSearch() {
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                searchTerm = e.target.value.toLowerCase();
+                renderTable();
+            });
+
+            document.getElementById('filter-select').addEventListener('change', (e) => {
+                filterMode = e.target.value;
+                renderTable();
+            });
+
+            // Sort headers
+            document.querySelectorAll('th[data-sort]').forEach(th => {
+                th.addEventListener('click', () => {
+                    const key = th.dataset.sort;
+                    if (currentSort.key === key) {
+                        currentSort.order = currentSort.order === 'desc' ? 'asc' : 'desc';
+                    } else {
+                        currentSort.key = key;
+                        currentSort.order = 'desc';
+                    }
+                    renderTable();
+                });
+            });
+        }
+
+        function resetCoefficients() {
+            const defaults = { cash: 1.00, current: 0.75, fixed: 0.50, liab: 1.00 };
+            Object.entries(defaults).forEach(([key, val]) => {
+                coefficients[key] = val;
+                document.getElementById('coeff-' + key).value = val;
+                document.getElementById('coeff-' + key + '-val').textContent = val.toFixed(2);
+            });
+            recalculate();
+        }
+
+        async function loadData() {
+            try {
+                let stocks = null;
+
+                // Try Go API first
+                try {
+                    const resp = await fetch('/api/stocks');
+                    if (resp.ok) stocks = await resp.json();
+                } catch (e) { /* fallback */ }
+
+                // Fallback to static JSON
+                if (!stocks) {
+                    const resp = await fetch('./stocks.json');
+                    if (resp.ok) stocks = await resp.json();
+                }
+
+                if (!stocks || stocks.length === 0) {
+                    showEmpty();
+                    return;
+                }
+
+                rawStocks = stocks;
+                recalculate();
+
+            } catch (error) {
+                console.error('Load error:', error);
+                showEmpty();
+            }
+        }
+
+        function recalculate() {
+            processedStocks = rawStocks
+                .filter(s => s.CurrentAssets > 0 && s.LastPrice > 0 && s.SharesIssued > 0)
+                .map(stock => {
+                    // Standard NCAV = 流動資産 - 総負債
+                    const ncav = stock.CurrentAssets - stock.Liabilities;
+                    const ncavPerShare = ncav / stock.SharesIssued;
+                    const marketCap = stock.LastPrice * stock.SharesIssued;
+                    const netNetRatio = marketCap > 0 ? ncav / marketCap : 0;
+
+                    // Special PBR (coefficient-adjusted)
+                    // 固定資産 = 総資産 - 流動資産
+                    // 流動資産(現金除く) = 流動資産 - 現金
+                    const cashPart = (stock.CashAndDeposits || 0);
+                    const currentOther = stock.CurrentAssets - cashPart;
+                    const fixedAssets = stock.TotalAssets - stock.CurrentAssets;
+                    const adjAssets = (cashPart * coefficients.cash) +
+                        (currentOther * coefficients.current) +
+                        (Math.max(0, fixedAssets) * coefficients.fixed);
+                    const adjLiab = stock.Liabilities * coefficients.liab;
+                    const adjNetAsset = adjAssets - adjLiab;
+                    const specialPBR = adjNetAsset > 0 ? marketCap / adjNetAsset : null;
+
+                    return {
+                        ...stock,
+                        ncav,
+                        ncavPerShare,
+                        netNetRatio,
+                        marketCapCalc: marketCap,
+                        specialPBR,
+                    };
+                });
+
+            updateStats();
+            renderTable();
+        }
+
+        function updateStats() {
+            const netNetCount = processedStocks.filter(s => s.netNetRatio > 1.0).length;
+            const grahamCount = processedStocks.filter(s => s.netNetRatio >= 0.67).length;
+
+            document.getElementById('stat-netnet').textContent = netNetCount;
+            document.getElementById('stat-graham').textContent = grahamCount;
+            document.getElementById('stat-total').textContent = processedStocks.length;
+
+            // Find max ratio stock
+            if (processedStocks.length > 0) {
+                const sorted = [...processedStocks].sort((a, b) => b.netNetRatio - a.netNetRatio);
+                const best = sorted[0];
+                document.getElementById('stat-max-ratio').textContent =
+                    best.netNetRatio > 0 ? best.netNetRatio.toFixed(2) : '-';
+                document.getElementById('stat-max-name').textContent =
+                    best.netNetRatio > 0 ? `${best.Code} ${best.Name}` : '-';
+            }
+        }
+
+        function getFilteredAndSorted() {
+            let filtered = processedStocks.filter(s => {
+                // Search
+                if (searchTerm) {
+                    if (!s.Code.toLowerCase().includes(searchTerm) &&
+                        !s.Name.toLowerCase().includes(searchTerm)) return false;
+                }
+
+                // Filter mode
+                switch (filterMode) {
+                    case 'netnet': return s.netNetRatio > 1.0;
+                    case 'graham': return s.netNetRatio >= 0.67;
+                    case 'positive': return s.ncav > 0;
+                    default: return true;
+                }
+            });
+
+            // Sort
+            filtered.sort((a, b) => {
+                let aVal = a[currentSort.key] ?? -Infinity;
+                let bVal = b[currentSort.key] ?? -Infinity;
+                if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+                if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+                if (currentSort.order === 'desc') return bVal > aVal ? 1 : bVal < aVal ? -1 : 0;
+                return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+            });
+
+            return filtered;
+        }
+
+        function formatOku(v) {
+            if (!v || v === 0) return '-';
+            return (v / 100000000).toFixed(1);
+        }
+
+        function getRatioClass(ratio) {
+            if (ratio > 1.5) return 'value-ultra';
+            if (ratio > 1.0) return 'value-good';
+            if (ratio >= 0.67) return 'value-ok';
+            if (ratio > 0) return 'value-warn';
+            return 'value-bad';
+        }
+
+        function getRankClass(rank) {
+            if (rank === 1) return 'rank-1';
+            if (rank === 2) return 'rank-2';
+            if (rank === 3) return 'rank-3';
+            return '';
+        }
+
+        function formatSPBR(value) {
+            if (value === null || value === undefined) return { text: '-', cls: 'no-data' };
+            let cls = '';
+            if (value < 0.5) cls = 'value-good';
+            else if (value < 1.0) cls = 'value-ok';
+            else if (value > 2.0) cls = 'value-bad';
+            return { text: value.toFixed(2), cls };
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('table-body');
+            const data = getFilteredAndSorted();
+
+            // Update sort indicators
+            document.querySelectorAll('th[data-sort]').forEach(th => {
+                th.classList.remove('sorted-asc', 'sorted-desc');
+                if (th.dataset.sort === currentSort.key) {
+                    th.classList.add(currentSort.order === 'asc' ? 'sorted-asc' : 'sorted-desc');
+                }
+            });
+
+            if (data.length === 0) {
+                tbody.innerHTML = `
+                    <tr><td colspan="13" class="empty-state">
+                        <div class="empty-icon">📭</div>
+                        <p>条件に一致する銘柄がありません</p>
+                    </td></tr>`;
+                document.getElementById('table-count').textContent = '0 件';
+                return;
+            }
+
+            tbody.innerHTML = data.map((s, i) => {
+                const rank = i + 1;
+                const ratioClass = getRatioClass(s.netNetRatio);
+                const rankClass = getRankClass(rank);
+                const price = s.LastPrice > 0 ? s.LastPrice.toLocaleString('ja-JP', { maximumFractionDigits: 0 }) : '-';
+                const spbr = formatSPBR(s.specialPBR);
+
+                const ncavStr = s.ncavPerShare > 0
+                    ? s.ncavPerShare.toFixed(0)
+                    : s.ncavPerShare.toFixed(0);
+
+                // Equity ratio
+                const eqRatio = s.EquityRatio;
+                let eqClass = 'no-data';
+                let eqText = '-';
+                if (eqRatio != null) {
+                    eqText = eqRatio.toFixed(1);
+                    if (eqRatio > 50) eqClass = 'value-good';
+                    else if (eqRatio > 30) eqClass = 'value-ok';
+                    else eqClass = 'value-bad';
+                }
+
+                // PBR
+                const pbr = s.PBR;
+                let pbrClass = 'no-data';
+                let pbrText = '-';
+                if (pbr != null) {
+                    pbrText = pbr.toFixed(2);
+                    if (pbr < 1) pbrClass = 'value-good';
+                    else if (pbr < 1.5) pbrClass = 'value-ok';
+                    else pbrClass = 'value-bad';
+                }
+
+                // Net-net badge
+                let badge = '';
+                if (s.netNetRatio > 1.0) badge = '<span class="badge badge-netnet">NET-NET</span>';
+
+                return `<tr>
+                    <td class="rank-cell ${rankClass}">${rank}</td>
+                    <td class="code-cell">${s.Code}</td>
+                    <td class="name-cell" title="${s.Name}">${s.Name}</td>
+                    <td class="number-cell ${ratioClass}">${s.netNetRatio.toFixed(2)} ${badge}</td>
+                    <td class="number-cell ${spbr.cls}">${spbr.text}</td>
+                    <td class="number-cell" style="color: ${s.ncavPerShare >= 0 ? '#00d9ff' : '#ff6b6b'}">${ncavStr}</td>
+                    <td class="number-cell">${price}</td>
+                    <td class="number-cell">${formatOku(s.marketCapCalc)}</td>
+                    <td class="number-cell">${formatOku(s.CurrentAssets)}</td>
+                    <td class="number-cell">${formatOku(s.Liabilities)}</td>
+                    <td class="number-cell">${formatOku(s.CashAndDeposits)}</td>
+                    <td class="number-cell ${eqClass}">${eqText}</td>
+                    <td class="number-cell ${pbrClass}">${pbrText}</td>
+                </tr>`;
+            }).join('');
+
+            const total = processedStocks.length;
+            const shown = data.length;
+            document.getElementById('table-count').textContent =
+                shown < total ? `${shown} 件表示中（全${total}件）` : `${shown} 件`;
+        }
+
+        function showEmpty() {
+            document.getElementById('table-body').innerHTML = `
+                <tr><td colspan="13" class="empty-state">
+                    <div class="empty-icon">📭</div>
+                    <p>データがありません。サーバーを起動してデータを取得してください。</p>
+                </td></tr>`;
+        }
+
+        function exportCSV() {
+            const data = getFilteredAndSorted();
+            const headers = ['順位', 'コード', '企業名', 'ネットネット比率', 'SP-PBR', 'NCAV/株(円)',
+                '株価(円)', '時価総額(億)', '流動資産(億)', '負債(億)', '現金(億)', '自己資本比率(%)', 'PBR'];
+
+            const rows = data.map((s, i) => [
+                i + 1,
+                s.Code,
+                s.Name,
+                s.netNetRatio.toFixed(2),
+                s.specialPBR != null ? s.specialPBR.toFixed(2) : '',
+                s.ncavPerShare.toFixed(0),
+                s.LastPrice > 0 ? s.LastPrice.toFixed(0) : '',
+                formatOku(s.marketCapCalc),
+                formatOku(s.CurrentAssets),
+                formatOku(s.Liabilities),
+                formatOku(s.CashAndDeposits),
+                s.EquityRatio != null ? s.EquityRatio.toFixed(1) : '',
+                s.PBR != null ? s.PBR.toFixed(2) : ''
+            ]);
+
+            const csv = [headers, ...rows]
+                .map(r => r.map(c => `"${c}"`).join(','))
+                .join('\n');
+
+            const bom = '\uFEFF';
+            const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `netnet_ranking_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+
+        // Start
+        init();
+    </script>
 </body>
 
 </html>

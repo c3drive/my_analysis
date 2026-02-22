@@ -377,6 +377,7 @@
                         <th>企業名</th>
                         <th>株価</th>
                         <th>時価総額(億)</th>
+                        <th>EPS(円)</th>
                         <th>ROE(%)</th>
                         <th>PER</th>
                         <th>PBR</th>
@@ -385,7 +386,7 @@
                 </thead>
                 <tbody id="table-body">
                     <tr>
-                        <td colspan="10" class="loading">
+                        <td colspan="11" class="loading">
                             <div class="loading-spinner">⏳</div>
                             <p>データを読み込んでいます...</p>
                         </td>
@@ -433,7 +434,7 @@
             document.getElementById('db-status').textContent = 'データなし';
             document.getElementById('table-body').innerHTML = `
                 <tr>
-                    <td colspan="10" class="empty-state">
+                    <td colspan="11" class="empty-state">
                         <div class="empty-state-icon">📭</div>
                         <p>対象となる銘柄データがありません。</p>
                         <p>財務データを取得してください。</p>
@@ -471,6 +472,15 @@
             let colorClass = '';
             if (value > 20) colorClass = 'value-good';
             else if (value > 15) colorClass = 'value-ok';
+            return { text: value.toFixed(1), class: colorClass };
+        }
+
+        function formatEPS(value) {
+            if (value === null || value === undefined) return { text: '-', class: 'no-data' };
+            let colorClass = '';
+            if (value > 200) colorClass = 'value-good';
+            else if (value > 100) colorClass = 'value-ok';
+            else if (value < 0) colorClass = 'value-bad';
             return { text: value.toFixed(1), class: colorClass };
         }
 
@@ -513,6 +523,7 @@
                     ? stock.LastPrice.toLocaleString('ja-JP', { maximumFractionDigits: 0 })
                     : '-';
                 const marketCap = formatOku(stock.MarketCap);
+                const eps = formatEPS(stock.EPS);
                 const roe = formatROE(stock.ROE);
                 const per = formatPER(stock.PER);
                 const pbr = formatPBR(stock.PBR);
@@ -525,6 +536,7 @@
                     <td class="name-cell" title="${stock.Name}">${stock.Name}</td>
                     <td class="number-cell">${price}</td>
                     <td class="number-cell ${marketCap.class}">${marketCap.text}</td>
+                    <td class="number-cell ${eps.class}">${eps.text}</td>
                     <td class="number-cell ${roe.class}">${roe.text}</td>
                     <td class="number-cell ${per.class}">${per.text}</td>
                     <td class="number-cell ${pbr.class}">${pbr.text}</td>
