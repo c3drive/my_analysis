@@ -176,7 +176,7 @@ func runCollector(targetDate string) {
 		log.Fatalf("Critical Error: Failed to parse JSON: %v\nRaw Body: %s", err, string(body))
 	}
 
-	db, err := initDB()
+	db, err := initXbrlDB()
 	if err != nil {
 		log.Fatalf("Critical Error: Database init failed: %v", err)
 	}
@@ -248,25 +248,40 @@ func saveStock(db *sql.DB, code, name, updatedAt string, data FinancialData) err
 
 // --- 閲覧ロジック ---
 func startServer() {
-	// DBマイグレーション実行（新しいカラムを追加）
-	migrateDB, err := initDB()
+	// 旧DBからの移行
+	migrateFromLegacyDB()
+
+	// DB初期化（3ファイル構成）
+	xdb, err := initXbrlDB()
 	if err != nil {
-		log.Printf("⚠️ DB migration warning: %v", err)
+		log.Printf("⚠️ xbrl.db init warning: %v", err)
 	} else {
-		migrateDB.Close()
-		log.Println("✅ Database schema migrated successfully")
+		xdb.Close()
 	}
+	pdb, err := initPriceDB()
+	if err != nil {
+		log.Printf("⚠️ stock_price.db init warning: %v", err)
+	} else {
+		pdb.Close()
+	}
+	rdb, err := initRsDB()
+	if err != nil {
+		log.Printf("⚠️ rs.db init warning: %v", err)
+	} else {
+		rdb.Close()
+	}
+	log.Println("✅ Database schema migrated successfully (3-DB)")
 
 	fs := http.FileServer(http.Dir("./web"))
 	http.Handle("/", fs)
 
-	http.HandleFunc("/stock_data.db", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/xbrl.db", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-sqlite3")
-		http.ServeFile(w, r, "./data/stock_data.db")
+		http.ServeFile(w, r, "./data/xbrl.db")
 	})
 
 	http.HandleFunc("/api/stocks", func(w http.ResponseWriter, r *http.Request) {
-		db, err := sql.Open("sqlite", "./data/stock_data.db")
+		db, err := openServerDB()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -284,8 +299,8 @@ func startServer() {
 				   p.date as price_date
 			FROM stocks s
 			LEFT JOIN (
-				SELECT code, close, date FROM stock_prices sp1
-				WHERE date = (SELECT MAX(date) FROM stock_prices sp2 WHERE sp2.code = sp1.code)
+				SELECT code, close, date FROM price_db.stock_prices sp1
+				WHERE date = (SELECT MAX(date) FROM price_db.stock_prices sp2 WHERE sp2.code = sp1.code)
 			) p ON s.code = p.code
 			ORDER BY s.code ASC`)
 		if err != nil {
@@ -379,7 +394,7 @@ func startServer() {
 			return
 		}
 
-		db, err := sql.Open("sqlite", "./data/stock_data.db")
+		db, err := sql.Open("sqlite", "./data/stock_price.db")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -413,7 +428,7 @@ func startServer() {
 	http.HandleFunc("/api/oneil-ranking", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 
-		db, err := sql.Open("sqlite", "./data/stock_data.db")
+		db, err := openServerDB()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -431,8 +446,8 @@ func startServer() {
 				   p.date as price_date
 			FROM stocks s
 			LEFT JOIN (
-				SELECT code, close, date FROM stock_prices sp1
-				WHERE date = (SELECT MAX(date) FROM stock_prices sp2 WHERE sp2.code = sp1.code)
+				SELECT code, close, date FROM price_db.stock_prices sp1
+				WHERE date = (SELECT MAX(date) FROM price_db.stock_prices sp2 WHERE sp2.code = sp1.code)
 			) p ON s.code = p.code
 			WHERE s.net_sales > 0 OR s.net_income > 0
 			ORDER BY s.code ASC`)
@@ -601,15 +616,16 @@ func fetchFromAPI(url, apiKey string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-// DBの初期化（拡張されたスキーマ）
-func initDB() (*sql.DB, error) {
+// --- DB初期化（3ファイル構成） ---
+
+// initXbrlDB は財務データ用DB（xbrl.db）を初期化する
+func initXbrlDB() (*sql.DB, error) {
 	ensureDir()
-	db, err := sql.Open("sqlite", "./data/stock_data.db")
+	db, err := sql.Open("sqlite", "./data/xbrl.db")
 	if err != nil {
 		return nil, err
 	}
 
-	// 拡張されたスキーマ
 	sqlStmt := `
 	CREATE TABLE IF NOT EXISTS stocks (
 		code TEXT PRIMARY KEY, 
@@ -634,23 +650,7 @@ func initDB() (*sql.DB, error) {
 		return nil, fmt.Errorf("テーブル作成失敗: %w", err)
 	}
 
-	// 株価テーブル
-	priceTableSQL := `
-	CREATE TABLE IF NOT EXISTS stock_prices (
-		code TEXT,
-		date TEXT,
-		open REAL,
-		high REAL,
-		low REAL,
-		close REAL,
-		volume INTEGER,
-		PRIMARY KEY (code, date)
-	);`
-	if _, err = db.Exec(priceTableSQL); err != nil {
-		return nil, fmt.Errorf("株価テーブル作成失敗: %w", err)
-	}
-
-	// 既存テーブルに新しいカラムがない場合は追加（マイグレーション）
+	// マイグレーション（既存カラム追加）
 	alterStatements := []string{
 		"ALTER TABLE stocks ADD COLUMN operating_income INTEGER",
 		"ALTER TABLE stocks ADD COLUMN net_income INTEGER",
@@ -663,10 +663,184 @@ func initDB() (*sql.DB, error) {
 		"ALTER TABLE stocks ADD COLUMN shares_issued INTEGER",
 	}
 	for _, stmt := range alterStatements {
-		db.Exec(stmt) // エラーは無視（既にカラムがある場合）
+		db.Exec(stmt)
 	}
 
 	return db, nil
+}
+
+// initPriceDB は株価データ用DB（stock_price.db）を初期化する
+func initPriceDB() (*sql.DB, error) {
+	ensureDir()
+	db, err := sql.Open("sqlite", "./data/stock_price.db")
+	if err != nil {
+		return nil, err
+	}
+
+	sqlStmt := `
+	CREATE TABLE IF NOT EXISTS stock_prices (
+		code TEXT,
+		date TEXT,
+		open REAL,
+		high REAL,
+		low REAL,
+		close REAL,
+		volume INTEGER,
+		PRIMARY KEY (code, date)
+	);`
+	if _, err = db.Exec(sqlStmt); err != nil {
+		return nil, fmt.Errorf("株価テーブル作成失敗: %w", err)
+	}
+
+	return db, nil
+}
+
+// initRsDB はリラティブストレングス用DB（rs.db）を初期化する
+func initRsDB() (*sql.DB, error) {
+	ensureDir()
+	db, err := sql.Open("sqlite", "./data/rs.db")
+	if err != nil {
+		return nil, err
+	}
+
+	sqlStmt := `
+	CREATE TABLE IF NOT EXISTS rs_scores (
+		code TEXT,
+		date TEXT,
+		rs_score REAL,
+		rs_rank INTEGER,
+		PRIMARY KEY (code, date)
+	);`
+	if _, err = db.Exec(sqlStmt); err != nil {
+		return nil, fmt.Errorf("RSテーブル作成失敗: %w", err)
+	}
+
+	return db, nil
+}
+
+// openServerDB はサーバー用に全DBをATTACHした接続を返す
+func openServerDB() (*sql.DB, error) {
+	ensureDir()
+	// メインはxbrl.db
+	db, err := sql.Open("sqlite", "./data/xbrl.db")
+	if err != nil {
+		return nil, err
+	}
+
+	// 株価DBをアタッチ
+	_, err = db.Exec(`ATTACH DATABASE './data/stock_price.db' AS price_db`)
+	if err != nil {
+		// stock_price.db が存在しなければ無視
+		log.Printf("⚠️ stock_price.db attach: %v", err)
+	}
+
+	// RS DBをアタッチ
+	_, err = db.Exec(`ATTACH DATABASE './data/rs.db' AS rs_db`)
+	if err != nil {
+		log.Printf("⚠️ rs.db attach: %v", err)
+	}
+
+	return db, nil
+}
+
+// migrateFromLegacyDB は旧 stock_data.db からデータを移行する
+func migrateFromLegacyDB() {
+	legacyPath := "./data/stock_data.db"
+	if _, err := os.Stat(legacyPath); os.IsNotExist(err) {
+		return // 旧DBなし
+	}
+
+	// xbrl.db が既にあればスキップ
+	if _, err := os.Stat("./data/xbrl.db"); err == nil {
+		var count int
+		xdb, err := sql.Open("sqlite", "./data/xbrl.db")
+		if err == nil {
+			defer xdb.Close()
+			xdb.QueryRow("SELECT COUNT(*) FROM stocks").Scan(&count)
+			if count > 0 {
+				fmt.Printf("📋 xbrl.db already has %d records, skipping migration\n", count)
+				return
+			}
+		}
+	}
+
+	fmt.Println("🔄 Migrating from legacy stock_data.db...")
+
+	legacyDB, err := sql.Open("sqlite", legacyPath)
+	if err != nil {
+		log.Printf("⚠️ Legacy DB open failed: %v", err)
+		return
+	}
+	defer legacyDB.Close()
+
+	// 財務データを移行
+	xbrlDB, err := initXbrlDB()
+	if err != nil {
+		log.Printf("⚠️ xbrl.db init failed: %v", err)
+		return
+	}
+	defer xbrlDB.Close()
+
+	rows, err := legacyDB.Query(`SELECT code, name, COALESCE(updated_at, ''),
+		COALESCE(net_sales,0), COALESCE(operating_income,0), COALESCE(net_income,0),
+		COALESCE(total_assets,0), COALESCE(net_assets,0), COALESCE(current_assets,0),
+		COALESCE(liabilities,0), COALESCE(current_liabilities,0),
+		COALESCE(cash_and_deposits,0), COALESCE(shares_issued,0)
+		FROM stocks`)
+	if err != nil {
+		log.Printf("⚠️ Legacy stocks query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	stockCount := 0
+	for rows.Next() {
+		var d FinancialData
+		var code, name, updatedAt string
+		rows.Scan(&code, &name, &updatedAt,
+			&d.NetSales, &d.OperatingIncome, &d.NetIncome,
+			&d.TotalAssets, &d.NetAssets, &d.CurrentAssets,
+			&d.Liabilities, &d.CurrentLiabilities,
+			&d.CashAndDeposits, &d.SharesIssued)
+		saveStock(xbrlDB, code, name, updatedAt, d)
+		stockCount++
+	}
+	fmt.Printf("  ✅ Migrated %d stocks to xbrl.db\n", stockCount)
+
+	// 株価データを移行
+	priceDB, err := initPriceDB()
+	if err != nil {
+		log.Printf("⚠️ stock_price.db init failed: %v", err)
+		return
+	}
+	defer priceDB.Close()
+
+	pRows, err := legacyDB.Query(`SELECT code, date, open, high, low, close, volume FROM stock_prices`)
+	if err != nil {
+		log.Printf("⚠️ Legacy prices query failed: %v", err)
+		return
+	}
+	defer pRows.Close()
+
+	priceCount := 0
+	for pRows.Next() {
+		var p StockPrice
+		pRows.Scan(&p.Code, &p.Date, &p.Open, &p.High, &p.Low, &p.Close, &p.Volume)
+		savePricesToDB(priceDB, p.Code, []StockPrice{p})
+		priceCount++
+	}
+	fmt.Printf("  ✅ Migrated %d price records to stock_price.db\n", priceCount)
+
+	// RS DB初期化
+	rsDB, err := initRsDB()
+	if err != nil {
+		log.Printf("⚠️ rs.db init failed: %v", err)
+	} else {
+		rsDB.Close()
+		fmt.Println("  ✅ Created rs.db")
+	}
+
+	fmt.Println("🔄 Migration complete!")
 }
 
 // XBRLタグと対応するフィールドのマッピング
@@ -891,7 +1065,7 @@ func parseXBRLFromZip(zipReader *zip.Reader) (FinancialData, error) {
 
 // テスト用関数
 func testLocalParse() {
-	db, err := initDB()
+	db, err := initXbrlDB()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1008,14 +1182,22 @@ func extractValue(line string) string {
 
 // fetchStockPrices はStooqから株価データを取得してDBに保存する
 func fetchStockPrices() {
-	db, err := initDB()
+	// 銘柄一覧はxbrl.dbから取得
+	xbrlDB, err := initXbrlDB()
 	if err != nil {
-		log.Fatalf("DB初期化失敗: %v", err)
+		log.Fatalf("xbrl.db初期化失敗: %v", err)
 	}
-	defer db.Close()
+	defer xbrlDB.Close()
 
-	// DBから証券コード一覧を取得
-	rows, err := db.Query("SELECT code FROM stocks ORDER BY code")
+	// 株価はstock_price.dbに保存
+	priceDB, err := initPriceDB()
+	if err != nil {
+		log.Fatalf("stock_price.db初期化失敗: %v", err)
+	}
+	defer priceDB.Close()
+
+	// xbrl.dbから証券コード一覧を取得
+	rows, err := xbrlDB.Query("SELECT code FROM stocks ORDER BY code")
 	if err != nil {
 		log.Fatalf("銘柄コード取得失敗: %v", err)
 	}
@@ -1043,7 +1225,7 @@ func fetchStockPrices() {
 		}
 
 		// DBに保存
-		savedCount, err := savePricesToDB(db, code, prices)
+		savedCount, err := savePricesToDB(priceDB, code, prices)
 		if err != nil {
 			fmt.Printf("  ❌ %s: DB保存失敗 %v\n", code, err)
 			errorCount++

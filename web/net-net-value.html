@@ -1061,8 +1061,8 @@
 
                 return `<tr>
                     <td class="rank-cell ${rankClass}">${rank}</td>
-                    <td class="code-cell">${s.Code}</td>
-                    <td class="name-cell" title="${s.Name}">${s.Name}</td>
+                    <td class="code-cell"><a href="/stock-detail.html?code=${s.Code}&from=/net-net-value.html" style="color:#00d9ff;text-decoration:none;">${s.Code}</a></td>
+                    <td class="name-cell" title="${s.Name}"><a href="/stock-detail.html?code=${s.Code}&from=/net-net-value.html" style="color:inherit;text-decoration:none;">${s.Name}</a></td>
                     <td class="number-cell ${ratioClass}">${s.netNetRatio.toFixed(2)} ${badge}</td>
                     <td class="number-cell ${spbr.cls}">${spbr.text}</td>
                     <td class="number-cell" style="color: ${s.ncavPerShare >= 0 ? '#00d9ff' : '#ff6b6b'}">${ncavStr}</td>

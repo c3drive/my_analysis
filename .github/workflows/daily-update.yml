@@ -34,25 +34,47 @@ jobs:
           go mod download
           mkdir -p data/raw
       
-      - name: Download latest SQLite DB (if exists)
+      - name: Download latest DBs from release (if exists)
         continue-on-error: true
         run: |
-          # GitHub APIで最新リリースを取得
           LATEST_TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.tag_name')
           
           if [ "$LATEST_TAG" != "null" ] && [ "$LATEST_TAG" != "" ]; then
             echo "📥 Found latest release: $LATEST_TAG"
-            curl -L -o data/stock_data.db.gz \
-              "https://github.com/${{ github.repository }}/releases/download/$LATEST_TAG/stock_data.db.gz" \
-              || echo "⚠️ Download failed, starting fresh"
             
-            if [ -f data/stock_data.db.gz ]; then
-              gunzip data/stock_data.db.gz
-              echo "✅ Database restored from previous release"
-              # 復元後のDB統計を出力
-              echo "📊 Pre-update stats:"
-              sqlite3 data/stock_data.db "SELECT COUNT(*) || ' total stocks' FROM stocks;"
-              sqlite3 data/stock_data.db "SELECT COUNT(*) || ' with sales data' FROM stocks WHERE net_sales > 0;"
+            # 3-DB構成: xbrl.db, stock_price.db, rs.db
+            for DB_NAME in xbrl.db stock_price.db rs.db; do
+              echo "  Downloading $DB_NAME..."
+              curl -L -o "data/${DB_NAME}.gz" \
+                "https://github.com/${{ github.repository }}/releases/download/$LATEST_TAG/${DB_NAME}.gz" \
+                2>/dev/null || echo "  ⚠️ $DB_NAME not found in release"
+              
+              if [ -f "data/${DB_NAME}.gz" ]; then
+                gunzip "data/${DB_NAME}.gz"
+                echo "  ✅ $DB_NAME restored"
+              fi
+            done
+            
+            # レガシーDB対応（stock_data.db → 3DB移行）
+            if [ ! -f data/xbrl.db ]; then
+              echo "  Trying legacy stock_data.db..."
+              curl -L -o data/stock_data.db.gz \
+                "https://github.com/${{ github.repository }}/releases/download/$LATEST_TAG/stock_data.db.gz" \
+                2>/dev/null || echo "  ⚠️ Legacy DB not found either"
+              if [ -f data/stock_data.db.gz ]; then
+                gunzip data/stock_data.db.gz
+                echo "  ✅ Legacy DB restored (will be migrated on first run)"
+              fi
+            fi
+            
+            # 復元後のDB統計を出力
+            echo "📊 Pre-update stats:"
+            if [ -f data/xbrl.db ]; then
+              sqlite3 data/xbrl.db "SELECT COUNT(*) || ' total stocks' FROM stocks;" 2>/dev/null || true
+              sqlite3 data/xbrl.db "SELECT COUNT(*) || ' with sales data' FROM stocks WHERE net_sales > 0;" 2>/dev/null || true
+            fi
+            if [ -f data/stock_price.db ]; then
+              sqlite3 data/stock_price.db "SELECT COUNT(DISTINCT code) || ' stocks with prices' FROM stock_prices;" 2>/dev/null || true
             fi
           else
             echo "ℹ️ No previous release found, starting fresh"
@@ -73,11 +95,9 @@ jobs:
             echo "📅 Processing: $TARGET_DATE"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             
-            # 各日のデータを取得（エラーがあっても続行）
             OUTPUT=$(go run main.go -mode=run -date=$TARGET_DATE 2>&1) || true
             echo "$OUTPUT"
             
-            # 処理件数を抽出してカウント
             PROCESSED=$(echo "$OUTPUT" | grep -oP '処理=\K[0-9]+' || echo "0")
             TOTAL_PROCESSED=$((TOTAL_PROCESSED + PROCESSED))
             
@@ -88,7 +108,6 @@ jobs:
               echo "⏭️ $TARGET_DATE: 新規データなし"
             fi
             
-            # EDINET APIのレートリミット対策（1秒待機）
             sleep 1
           done
           
@@ -98,7 +117,6 @@ jobs:
           echo "  合計処理: $TOTAL_PROCESSED 件"
           echo "  新規追加: $TOTAL_NEW 件"
           
-          # 結果をGitHub Outputに保存
           echo "total_processed=$TOTAL_PROCESSED" >> $GITHUB_OUTPUT
           echo "total_new=$TOTAL_NEW" >> $GITHUB_OUTPUT
         id: fetch-data
@@ -116,34 +134,48 @@ jobs:
       - name: Post-update DB statistics
         run: |
           echo "📊 Post-update statistics:"
-          if [ -f data/stock_data.db ]; then
-            sqlite3 data/stock_data.db "SELECT '  Total stocks: ' || COUNT(*) FROM stocks;"
-            sqlite3 data/stock_data.db "SELECT '  With sales: ' || COUNT(*) FROM stocks WHERE net_sales > 0;"
-            sqlite3 data/stock_data.db "SELECT '  With net_income: ' || COUNT(*) FROM stocks WHERE net_income > 0;"
-            sqlite3 data/stock_data.db "SELECT '  With total_assets: ' || COUNT(*) FROM stocks WHERE total_assets > 0;"
-            sqlite3 data/stock_data.db "SELECT '  With price: ' || COUNT(DISTINCT code) FROM stock_prices;"
-            sqlite3 data/stock_data.db "SELECT '  Latest date: ' || MAX(updated_at) FROM stocks WHERE updated_at != '';"
-          else
-            echo "  ⚠️ Database file not found"
+          if [ -f data/xbrl.db ]; then
+            sqlite3 data/xbrl.db "SELECT '  Total stocks: ' || COUNT(*) FROM stocks;"
+            sqlite3 data/xbrl.db "SELECT '  With sales: ' || COUNT(*) FROM stocks WHERE net_sales > 0;"
+            sqlite3 data/xbrl.db "SELECT '  With net_income: ' || COUNT(*) FROM stocks WHERE net_income > 0;"
+            sqlite3 data/xbrl.db "SELECT '  With total_assets: ' || COUNT(*) FROM stocks WHERE total_assets > 0;"
+            sqlite3 data/xbrl.db "SELECT '  Latest date: ' || MAX(updated_at) FROM stocks WHERE updated_at != '';"
+          fi
+          if [ -f data/stock_price.db ]; then
+            sqlite3 data/stock_price.db "SELECT '  Stocks with prices: ' || COUNT(DISTINCT code) FROM stock_prices;"
           fi
 
-      - name: Compress database
+      - name: Compress databases
         run: |
-          gzip -c data/stock_data.db > data/stock_data.db.gz
-          echo "📦 Database compressed"
+          for DB_NAME in xbrl.db stock_price.db rs.db; do
+            if [ -f "data/$DB_NAME" ]; then
+              gzip -c "data/$DB_NAME" > "data/${DB_NAME}.gz"
+              echo "📦 Compressed $DB_NAME"
+            fi
+          done
       
       - name: Generate release info
         id: db-info
         run: |
-          DB_SIZE=$(stat -c%s data/stock_data.db.gz)
           DATE=$(date -u +%Y-%m-%d)
-          STOCK_COUNT=$(sqlite3 data/stock_data.db "SELECT COUNT(*) FROM stocks;" 2>/dev/null || echo "unknown")
-          SALES_COUNT=$(sqlite3 data/stock_data.db "SELECT COUNT(*) FROM stocks WHERE net_sales > 0;" 2>/dev/null || echo "unknown")
-          echo "db_size=$DB_SIZE" >> $GITHUB_OUTPUT
+          STOCK_COUNT=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks;" 2>/dev/null || echo "unknown")
+          SALES_COUNT=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE net_sales > 0;" 2>/dev/null || echo "unknown")
+          PRICE_COUNT=$(sqlite3 data/stock_price.db "SELECT COUNT(DISTINCT code) FROM stock_prices;" 2>/dev/null || echo "unknown")
+          
+          # 合計サイズ
+          TOTAL_SIZE=0
+          for f in data/xbrl.db.gz data/stock_price.db.gz data/rs.db.gz; do
+            if [ -f "$f" ]; then
+              SIZE=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
+              TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
+            fi
+          done
+          
           echo "date=$DATE" >> $GITHUB_OUTPUT
           echo "stock_count=$STOCK_COUNT" >> $GITHUB_OUTPUT
           echo "sales_count=$SALES_COUNT" >> $GITHUB_OUTPUT
-          echo "📊 Database size: $(numfmt --to=iec-i --suffix=B $DB_SIZE)"
+          echo "price_count=$PRICE_COUNT" >> $GITHUB_OUTPUT
+          echo "total_size=$TOTAL_SIZE" >> $GITHUB_OUTPUT
       
       - name: Create GitHub Release
         id: create_release
@@ -152,23 +184,33 @@ jobs:
           tag_name: data-${{ steps.db-info.outputs.date }}
           name: Stock Data - ${{ steps.db-info.outputs.date }}
           body: |
-            📊 Daily stock data update
+            📊 Daily stock data update (3-DB architecture)
             
             📅 Updated: ${{ steps.db-info.outputs.date }}
             📈 Total stocks: ${{ steps.db-info.outputs.stock_count }}
             💰 With financial data: ${{ steps.db-info.outputs.sales_count }}
-            🗄️ Database size: ${{ steps.db-info.outputs.db_size }} bytes
+            📉 With price data: ${{ steps.db-info.outputs.price_count }}
+            🗄️ Total size: ${{ steps.db-info.outputs.total_size }} bytes
+            
+            **Files:**
+            - `xbrl.db.gz` - 財務データ（EDINET XBRL）
+            - `stock_price.db.gz` - 株価データ（Stooq）
+            - `rs.db.gz` - リラティブストレングス
             
             **Download:**
             ```bash
-            wget https://github.com/${{ github.repository }}/releases/download/data-${{ steps.db-info.outputs.date }}/stock_data.db.gz
-            gunzip stock_data.db.gz
+            for f in xbrl.db stock_price.db rs.db; do
+              wget https://github.com/${{ github.repository }}/releases/download/data-${{ steps.db-info.outputs.date }}/${f}.gz
+              gunzip ${f}.gz
+            done
             ```
             
             **Web Dashboard:**
             - [View Analysis](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }})
           files: |
-            data/stock_data.db.gz
+            data/xbrl.db.gz
+            data/stock_price.db.gz
+            data/rs.db.gz
           draft: false
           prerelease: false
         env:

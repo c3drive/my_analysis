@@ -257,6 +257,18 @@
             background: rgba(0, 217, 255, 0.5);
         }
 
+        .code-link {
+            color: #00d9ff;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .code-link:hover {
+            color: #00ff88;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+        }
+
         .sortable {
             cursor: pointer;
             user-select: none;
@@ -647,8 +659,8 @@
                 const netIncome = formatOku(stock.NetIncome);
 
                 tr.innerHTML = `
-                    <td class="code-cell">${stock.Code}</td>
-                    <td class="name-cell" title="${stock.Name}">${stock.Name}</td>
+                    <td class="code-cell"><a class="code-link" href="/stock-detail.html?code=${stock.Code}&from=/">${stock.Code}</a></td>
+                    <td class="name-cell" title="${stock.Name}"><a class="code-link" href="/stock-detail.html?code=${stock.Code}&from=/">${stock.Name}</a></td>
                     <td class="number-cell ${priceClass}">${priceText}</td>
                     <td class="number-cell ${marketCap.class}">${marketCap.text}</td>
                     <td class="number-cell ${eps.class}">${eps.text}</td>

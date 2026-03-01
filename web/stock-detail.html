@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>銘柄詳細 | 株式分析ダッシュボード</title>
+    <meta name="description" content="個別銘柄の株価チャート・財務指標の詳細分析。TradingView lightweight-charts によるインタラクティブなローソク足チャート。">
+    <script src="https://unpkg.com/lightweight-charts@5.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0a0a1a 0%, #111128 50%, #0d1b2a 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+        }
+
+        /* ナビゲーション */
+        .nav-bar {
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 12px 30px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            backdrop-filter: blur(20px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-bar a {
+            color: #8888aa;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: color 0.2s;
+        }
+
+        .nav-bar a:hover {
+            color: #00d9ff;
+        }
+
+        .nav-bar .back-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #00d9ff;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 8px;
+            background: rgba(0, 217, 255, 0.08);
+            border: 1px solid rgba(0, 217, 255, 0.15);
+        }
+
+        .nav-bar .back-btn:hover {
+            background: rgba(0, 217, 255, 0.15);
+        }
+
+        .nav-breadcrumb {
+            color: #555;
+            font-size: 0.85rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px 30px 60px;
+        }
+
+        /* ヘッダー */
+        .stock-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .stock-title-area {
+            flex: 1;
+        }
+
+        .stock-code {
+            font-size: 0.9rem;
+            color: #00d9ff;
+            font-weight: 600;
+            letter-spacing: 2px;
+            margin-bottom: 4px;
+        }
+
+        .stock-name {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ffffff 0%, #c0c0e0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stock-price-area {
+            text-align: right;
+        }
+
+        .current-price {
+            font-size: 2.4rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .current-price .unit {
+            font-size: 1rem;
+            color: #888;
+            font-weight: 400;
+        }
+
+        .price-date {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        /* チャートコントロール */
+        .chart-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .chart-type-btn {
+            padding: 7px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.04);
+            color: #aaa;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .chart-type-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+
+        .chart-type-btn.active {
+            background: rgba(0, 217, 255, 0.12);
+            border-color: rgba(0, 217, 255, 0.4);
+            color: #00d9ff;
+        }
+
+        .chart-separator {
+            width: 1px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 0 8px;
+        }
+
+        /* チャートエリア */
+        .chart-wrapper {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .chart-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(0, 217, 255, 0.3), transparent);
+        }
+
+        #price-chart {
+            width: 100%;
+            height: 480px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* ツールチップ */
+        .chart-tooltip {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            z-index: 10;
+            pointer-events: none;
+            font-size: 0.82rem;
+        }
+
+        .tooltip-price {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .tooltip-ohlc {
+            display: flex;
+            gap: 16px;
+            margin-top: 4px;
+        }
+
+        .tooltip-ohlc span {
+            color: #888;
+        }
+
+        .tooltip-ohlc .value {
+            color: #ddd;
+            font-weight: 500;
+        }
+
+        .tooltip-volume {
+            color: #666;
+            margin-top: 2px;
+        }
+
+        /* 指標カード */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .metric-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 14px;
+            padding: 18px 20px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent, rgba(0, 217, 255, 0.3));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .metric-card:hover {
+            background: rgba(255, 255, 255, 0.07);
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .metric-card:hover::before {
+            opacity: 1;
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: #777;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .metric-value.positive {
+            color: #00ff88;
+        }
+
+        .metric-value.negative {
+            color: #ff4466;
+        }
+
+        .metric-value.neutral {
+            color: #ffaa00;
+        }
+
+        .metric-sub {
+            font-size: 0.75rem;
+            color: #555;
+            margin-top: 4px;
+        }
+
+        /* MA凡例 */
+        .ma-legend {
+            display: flex;
+            gap: 16px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .ma-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            color: #888;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .ma-item:hover {
+            opacity: 0.8;
+        }
+
+        .ma-dot {
+            width: 10px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        /* 財務テーブル */
+        .financial-section {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .financial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+        }
+
+        .fin-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .fin-label {
+            font-size: 0.85rem;
+            color: #888;
+        }
+
+        .fin-value {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #ddd;
+        }
+
+        /* ローディング */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 300px;
+            color: #555;
+            font-size: 1.1rem;
+        }
+
+        .loading::after {
+            content: '';
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(0, 217, 255, 0.2);
+            border-top-color: #00d9ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-left: 12px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* レスポンシブ */
+        @media (max-width: 768px) {
+            .container {
+                padding: 16px;
+            }
+
+            .stock-header {
+                flex-direction: column;
+            }
+
+            .stock-price-area {
+                text-align: left;
+            }
+
+            .stock-name {
+                font-size: 1.5rem;
+            }
+
+            .current-price {
+                font-size: 1.8rem;
+            }
+
+            #price-chart {
+                height: 360px;
+            }
+
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- ナビゲーション -->
+    <nav class="nav-bar" id="nav-bar">
+        <a href="/" class="back-btn" id="back-link">← ダッシュボード</a>
+        <span class="nav-breadcrumb">/ 銘柄詳細</span>
+        <div style="flex:1"></div>
+        <a href="/net-net-value.html">ネットネット</a>
+        <a href="/oneil-screen.html">オニール</a>
+        <a href="/market-top.html">天井検出</a>
+    </nav>
+
+    <div class="container">
+        <!-- ヘッダー -->
+        <div class="stock-header" id="stock-header">
+            <div class="stock-title-area">
+                <div class="stock-code" id="stock-code">----</div>
+                <h1 class="stock-name" id="stock-name">読み込み中...</h1>
+            </div>
+            <div class="stock-price-area">
+                <div class="current-price" id="current-price">---<span class="unit">円</span></div>
+                <div class="price-date" id="price-date"></div>
+            </div>
+        </div>
+
+        <!-- チャートコントロール -->
+        <div class="chart-controls" id="chart-controls">
+            <button class="chart-type-btn active" data-type="candlestick" id="btn-candlestick">ローソク足</button>
+            <button class="chart-type-btn" data-type="line" id="btn-line">ライン</button>
+            <button class="chart-type-btn" data-type="area" id="btn-area">エリア</button>
+            <div class="chart-separator"></div>
+            <button class="chart-type-btn active" data-ma="5" id="btn-ma5">MA5</button>
+            <button class="chart-type-btn active" data-ma="25" id="btn-ma25">MA25</button>
+            <button class="chart-type-btn active" data-ma="75" id="btn-ma75">MA75</button>
+            <button class="chart-type-btn" data-ma="200" id="btn-ma200">MA200</button>
+            <div class="chart-separator"></div>
+            <button class="chart-type-btn" id="btn-toggle-volume">出来高</button>
+        </div>
+
+        <!-- チャート -->
+        <div class="chart-wrapper">
+            <div class="chart-tooltip" id="chart-tooltip" style="display:none;">
+                <div class="tooltip-price" id="tooltip-price"></div>
+                <div class="tooltip-ohlc" id="tooltip-ohlc"></div>
+                <div class="tooltip-volume" id="tooltip-volume"></div>
+            </div>
+            <div id="price-chart"></div>
+            <div class="ma-legend" id="ma-legend"></div>
+        </div>
+
+        <!-- 指標カード -->
+        <div class="metrics-grid" id="metrics-grid">
+            <!-- JS で動的生成 -->
+        </div>
+
+        <!-- 財務データ -->
+        <div class="financial-section" id="financial-section">
+            <h2 class="section-title">📊 財務データ</h2>
+            <div class="financial-grid" id="financial-grid">
+                <!-- JS で動的生成 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==============================================================
+        // Stock Detail Page with Lightweight Charts
+        // ==============================================================
+
+        const params = new URLSearchParams(window.location.search);
+        const stockCode = params.get('code');
+        const fromPage = params.get('from') || '/';
+
+        if (!stockCode) {
+            document.getElementById('stock-name').textContent = 'コードが指定されていません';
+        }
+
+        // 戻りリンク設定
+        document.getElementById('back-link').href = fromPage;
+
+        // グローバル変数
+        let chart = null;
+        let mainSeries = null;
+        let volumeSeries = null;
+        let maSeries = {};
+        let priceData = [];
+        let stockInfo = null;
+        let currentChartType = 'candlestick';
+        let showVolume = false;
+        const maColors = {
+            5: '#ffaa00',
+            25: '#00d9ff',
+            75: '#ff6b9d',
+            200: '#88ff88'
+        };
+        const maEnabled = { 5: true, 25: true, 75: true, 200: false };
+
+        // ==============================================================
+        // データ取得
+        // ==============================================================
+        async function loadData() {
+            try {
+                const [stocksRes, pricesRes] = await Promise.all([
+                    fetch('/api/stocks'),
+                    fetch(`/api/prices/${stockCode}`)
+                ]);
+
+                const allStocks = await stocksRes.json();
+                const prices = await pricesRes.json();
+
+                stockInfo = allStocks.find(s => s.Code === stockCode);
+                priceData = (prices || [])
+                    .sort((a, b) => a.Date.localeCompare(b.Date))
+                    .map(p => ({
+                        time: p.Date,
+                        open: p.Open,
+                        high: p.High,
+                        low: p.Low,
+                        close: p.Close,
+                        volume: p.Volume
+                    }));
+
+                renderHeader();
+                renderChart();
+                renderMetrics();
+                renderFinancials();
+            } catch (err) {
+                console.error('Data load error:', err);
+                document.getElementById('stock-name').textContent = 'データ取得エラー';
+            }
+        }
+
+        // ==============================================================
+        // ヘッダー
+        // ==============================================================
+        function renderHeader() {
+            if (!stockInfo) return;
+
+            document.getElementById('stock-code').textContent = stockInfo.Code;
+            document.getElementById('stock-name').textContent = stockInfo.Name;
+            document.title = `${stockInfo.Name} (${stockInfo.Code}) | 株式分析`;
+
+            if (stockInfo.LastPrice > 0) {
+                document.getElementById('current-price').innerHTML =
+                    `${stockInfo.LastPrice.toLocaleString()}<span class="unit">円</span>`;
+            }
+            if (stockInfo.PriceDate) {
+                document.getElementById('price-date').textContent = `最終更新: ${stockInfo.PriceDate}`;
+            }
+        }
+
+        // ==============================================================
+        // チャート
+        // ==============================================================
+        function renderChart() {
+            if (priceData.length === 0) {
+                document.getElementById('price-chart').innerHTML =
+                    '<div class="loading">株価データがありません</div>';
+                return;
+            }
+
+            const container = document.getElementById('price-chart');
+            container.innerHTML = '';
+
+            chart = LightweightCharts.createChart(container, {
+                layout: {
+                    background: { color: 'transparent' },
+                    textColor: '#555',
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: 11,
+                },
+                grid: {
+                    vertLines: { color: 'rgba(255,255,255,0.03)' },
+                    horzLines: { color: 'rgba(255,255,255,0.03)' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: {
+                        color: 'rgba(0, 217, 255, 0.3)',
+                        labelBackgroundColor: '#1a1a3e',
+                    },
+                    horzLine: {
+                        color: 'rgba(0, 217, 255, 0.3)',
+                        labelBackgroundColor: '#1a1a3e',
+                    },
+                },
+                timeScale: {
+                    borderColor: 'rgba(255,255,255,0.06)',
+                    timeVisible: false,
+                    rightOffset: 5,
+                },
+                rightPriceScale: {
+                    borderColor: 'rgba(255,255,255,0.06)',
+                },
+                handleScroll: { vertTouchDrag: false },
+            });
+
+            // メインシリーズ作成
+            createMainSeries();
+
+            // MA 作成
+            updateMASeries();
+
+            // ツールチップ
+            setupTooltip();
+
+            // リサイズ対応
+            const resizeObserver = new ResizeObserver(() => {
+                chart.applyOptions({ width: container.clientWidth });
+            });
+            resizeObserver.observe(container);
+        }
+
+        function createMainSeries() {
+            // 既存削除
+            if (mainSeries) {
+                chart.removeSeries(mainSeries);
+                mainSeries = null;
+            }
+            if (volumeSeries) {
+                chart.removeSeries(volumeSeries);
+                volumeSeries = null;
+            }
+
+            if (currentChartType === 'candlestick') {
+                mainSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+                    upColor: '#00ff88',
+                    downColor: '#ff4466',
+                    borderUpColor: '#00ff88',
+                    borderDownColor: '#ff4466',
+                    wickUpColor: '#00ff88',
+                    wickDownColor: '#ff4466',
+                });
+                mainSeries.setData(priceData);
+            } else if (currentChartType === 'line') {
+                mainSeries = chart.addSeries(LightweightCharts.LineSeries, {
+                    color: '#00d9ff',
+                    lineWidth: 2,
+                });
+                mainSeries.setData(priceData.map(d => ({ time: d.time, value: d.close })));
+            } else if (currentChartType === 'area') {
+                mainSeries = chart.addSeries(LightweightCharts.AreaSeries, {
+                    topColor: 'rgba(0, 217, 255, 0.3)',
+                    bottomColor: 'rgba(0, 217, 255, 0.02)',
+                    lineColor: '#00d9ff',
+                    lineWidth: 2,
+                });
+                mainSeries.setData(priceData.map(d => ({ time: d.time, value: d.close })));
+            }
+
+            // 出来高
+            if (showVolume) {
+                volumeSeries = chart.addSeries(LightweightCharts.HistogramSeries, {
+                    priceFormat: { type: 'volume' },
+                    priceScaleId: 'volume',
+                });
+
+                chart.priceScale('volume').applyOptions({
+                    scaleMargins: { top: 0.85, bottom: 0 },
+                });
+
+                volumeSeries.setData(priceData.map(d => ({
+                    time: d.time,
+                    value: d.volume,
+                    color: d.close >= d.open ? 'rgba(0,255,136,0.15)' : 'rgba(255,68,102,0.15)',
+                })));
+            }
+
+            chart.timeScale().fitContent();
+        }
+
+        // 移動平均計算
+        function calcMA(data, period) {
+            const result = [];
+            for (let i = period - 1; i < data.length; i++) {
+                let sum = 0;
+                for (let j = 0; j < period; j++) {
+                    sum += data[i - j].close;
+                }
+                result.push({ time: data[i].time, value: sum / period });
+            }
+            return result;
+        }
+
+        function updateMASeries() {
+            // 既存MA削除
+            Object.values(maSeries).forEach(s => {
+                try { chart.removeSeries(s); } catch (e) { }
+            });
+            maSeries = {};
+
+            for (const [period, enabled] of Object.entries(maEnabled)) {
+                if (!enabled) continue;
+                const p = parseInt(period);
+                if (priceData.length < p) continue;
+
+                const maData = calcMA(priceData, p);
+                const series = chart.addSeries(LightweightCharts.LineSeries, {
+                    color: maColors[p],
+                    lineWidth: 1,
+                    crosshairMarkerVisible: false,
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                });
+                series.setData(maData);
+                maSeries[p] = series;
+            }
+
+            // MA凡例更新
+            renderMALegend();
+        }
+
+        function renderMALegend() {
+            const container = document.getElementById('ma-legend');
+            container.innerHTML = '';
+            for (const [period, color] of Object.entries(maColors)) {
+                if (!maEnabled[period]) continue;
+                const item = document.createElement('div');
+                item.className = 'ma-item';
+                item.innerHTML = `<span class="ma-dot" style="background:${color}"></span>MA${period}`;
+                container.appendChild(item);
+            }
+        }
+
+        // ツールチップ
+        function setupTooltip() {
+            const tooltip = document.getElementById('chart-tooltip');
+            const tooltipPrice = document.getElementById('tooltip-price');
+            const tooltipOhlc = document.getElementById('tooltip-ohlc');
+            const tooltipVol = document.getElementById('tooltip-volume');
+
+            chart.subscribeCrosshairMove(param => {
+                if (!param.time || !param.seriesData.size) {
+                    tooltip.style.display = 'none';
+                    return;
+                }
+
+                tooltip.style.display = 'block';
+                const data = param.seriesData.get(mainSeries);
+                if (!data) return;
+
+                if (currentChartType === 'candlestick') {
+                    const change = data.close - data.open;
+                    const changePercent = ((change / data.open) * 100).toFixed(2);
+                    const color = change >= 0 ? '#00ff88' : '#ff4466';
+                    const sign = change >= 0 ? '+' : '';
+
+                    tooltipPrice.innerHTML = `<span style="color:${color}">${data.close.toLocaleString()}</span>
+                        <span style="color:${color};font-size:0.85rem;">${sign}${change.toFixed(0)} (${sign}${changePercent}%)</span>`;
+                    tooltipOhlc.innerHTML = `
+                        <span>始 <span class="value">${data.open.toLocaleString()}</span></span>
+                        <span>高 <span class="value">${data.high.toLocaleString()}</span></span>
+                        <span>安 <span class="value">${data.low.toLocaleString()}</span></span>
+                        <span>終 <span class="value">${data.close.toLocaleString()}</span></span>`;
+                } else {
+                    tooltipPrice.textContent = (data.value || data.close || 0).toLocaleString();
+                    tooltipOhlc.innerHTML = '';
+                }
+
+                if (volumeSeries) {
+                    const volData = param.seriesData.get(volumeSeries);
+                    if (volData) {
+                        tooltipVol.textContent = `出来高: ${(volData.value || 0).toLocaleString()}`;
+                    }
+                }
+            });
+        }
+
+        // ==============================================================
+        // 指標カード
+        // ==============================================================
+        function renderMetrics() {
+            if (!stockInfo) return;
+            const grid = document.getElementById('metrics-grid');
+            grid.innerHTML = '';
+
+            const metrics = [
+                {
+                    label: '時価総額',
+                    value: stockInfo.MarketCap > 0 ? `${(stockInfo.MarketCap / 100000000).toFixed(1)}億` : '-',
+                    accent: 'rgba(0,217,255,0.4)',
+                },
+                {
+                    label: 'PER',
+                    value: stockInfo.PER ? `${stockInfo.PER.toFixed(1)}倍` : '-',
+                    class: stockInfo.PER ? (stockInfo.PER < 15 ? 'positive' : stockInfo.PER > 40 ? 'negative' : '') : '',
+                    sub: stockInfo.PER ? (stockInfo.PER < 10 ? '割安水準' : stockInfo.PER < 15 ? '適正' : stockInfo.PER > 40 ? '割高注意' : '') : '',
+                    accent: 'rgba(255,170,0,0.4)',
+                },
+                {
+                    label: 'PBR',
+                    value: stockInfo.PBR ? `${stockInfo.PBR.toFixed(2)}倍` : '-',
+                    class: stockInfo.PBR ? (stockInfo.PBR < 1 ? 'positive' : stockInfo.PBR > 3 ? 'negative' : '') : '',
+                    sub: stockInfo.PBR ? (stockInfo.PBR < 0.5 ? '超割安' : stockInfo.PBR < 1 ? '資産割安' : '') : '',
+                    accent: 'rgba(0,255,136,0.4)',
+                },
+                {
+                    label: 'EPS',
+                    value: stockInfo.EPS ? `${stockInfo.EPS.toFixed(0)}円` : '-',
+                    class: stockInfo.EPS ? (stockInfo.EPS > 200 ? 'positive' : stockInfo.EPS < 0 ? 'negative' : '') : '',
+                    accent: 'rgba(136,136,255,0.4)',
+                },
+                {
+                    label: 'ROE',
+                    value: stockInfo.ROE ? `${stockInfo.ROE.toFixed(1)}%` : '-',
+                    class: stockInfo.ROE ? (stockInfo.ROE > 15 ? 'positive' : stockInfo.ROE < 5 ? 'negative' : 'neutral') : '',
+                    sub: stockInfo.ROE ? (stockInfo.ROE > 20 ? '高収益' : stockInfo.ROE > 15 ? '優秀' : stockInfo.ROE < 5 ? '低水準' : '') : '',
+                    accent: 'rgba(255,107,157,0.4)',
+                },
+                {
+                    label: '自己資本比率',
+                    value: stockInfo.EquityRatio ? `${stockInfo.EquityRatio.toFixed(1)}%` : '-',
+                    class: stockInfo.EquityRatio ? (stockInfo.EquityRatio > 50 ? 'positive' : stockInfo.EquityRatio < 20 ? 'negative' : '') : '',
+                    accent: 'rgba(0,200,150,0.4)',
+                },
+                {
+                    label: 'ネットネット比率',
+                    value: stockInfo.NetNetRatio ? stockInfo.NetNetRatio.toFixed(2) : '-',
+                    class: stockInfo.NetNetRatio ? (stockInfo.NetNetRatio > 1 ? 'positive' : stockInfo.NetNetRatio > 0.67 ? 'neutral' : '') : '',
+                    sub: stockInfo.NetNetRatio ? (stockInfo.NetNetRatio > 1.5 ? 'ウルトラ割安' : stockInfo.NetNetRatio > 1 ? '割安' : stockInfo.NetNetRatio > 0.67 ? 'グレアム基準' : '') : '',
+                    accent: 'rgba(255,215,0,0.4)',
+                },
+            ];
+
+            metrics.forEach(m => {
+                const card = document.createElement('div');
+                card.className = 'metric-card';
+                card.style.setProperty('--accent', m.accent || 'rgba(0,217,255,0.3)');
+                card.innerHTML = `
+                    <div class="metric-label">${m.label}</div>
+                    <div class="metric-value ${m.class || ''}">${m.value}</div>
+                    ${m.sub ? `<div class="metric-sub">${m.sub}</div>` : ''}
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // ==============================================================
+        // 財務データ
+        // ==============================================================
+        function renderFinancials() {
+            if (!stockInfo) return;
+            const grid = document.getElementById('financial-grid');
+            grid.innerHTML = '';
+
+            const fmt = (v) => v > 0 ? `${(v / 1000000).toFixed(0)}百万円` : '-';
+            const fmtShares = (v) => v > 0 ? `${(v / 1000).toFixed(0)}千株` : '-';
+
+            const items = [
+                { label: '売上高', value: fmt(stockInfo.NetSales) },
+                { label: '営業利益', value: fmt(stockInfo.OperatingIncome) },
+                { label: '純利益', value: fmt(stockInfo.NetIncome) },
+                { label: '総資産', value: fmt(stockInfo.TotalAssets) },
+                { label: '純資産', value: fmt(stockInfo.NetAssets) },
+                { label: '流動資産', value: fmt(stockInfo.CurrentAssets) },
+                { label: '負債合計', value: fmt(stockInfo.Liabilities) },
+                { label: '流動負債', value: fmt(stockInfo.CurrentLiabilities) },
+                { label: '現金及び預金', value: fmt(stockInfo.CashAndDeposits) },
+                { label: '発行済株式数', value: fmtShares(stockInfo.SharesIssued) },
+            ];
+
+            items.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'fin-row';
+                row.innerHTML = `
+                    <span class="fin-label">${item.label}</span>
+                    <span class="fin-value">${item.value}</span>
+                `;
+                grid.appendChild(row);
+            });
+        }
+
+        // ==============================================================
+        // イベントハンドラー
+        // ==============================================================
+
+        // チャート種類切替
+        document.querySelectorAll('[data-type]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('[data-type]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentChartType = btn.dataset.type;
+                createMainSeries();
+                updateMASeries();
+            });
+        });
+
+        // MA切替
+        document.querySelectorAll('[data-ma]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const period = parseInt(btn.dataset.ma);
+                maEnabled[period] = !maEnabled[period];
+                btn.classList.toggle('active');
+                updateMASeries();
+            });
+        });
+
+        // 出来高切替
+        document.getElementById('btn-toggle-volume').addEventListener('click', function () {
+            showVolume = !showVolume;
+            this.classList.toggle('active');
+            createMainSeries();
+            updateMASeries();
+        });
+
+        // 初期化
+        if (stockCode) {
+            loadData();
+        }
+    </script>
+</body>
+
+</html>

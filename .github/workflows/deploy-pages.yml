@@ -16,7 +16,6 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    # workflow_run の場合は成功時のみデプロイ
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout
@@ -27,52 +26,52 @@ jobs:
         with:
           go-version: '1.23'
 
-      - name: Download latest DB from release
+      - name: Download latest DBs from release
         continue-on-error: true
         run: |
           mkdir -p data
           LATEST_TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.tag_name')
           
           if [ "$LATEST_TAG" != "null" ] && [ "$LATEST_TAG" != "" ]; then
-            echo "📥 Downloading DB from release: $LATEST_TAG"
-            curl -L -o data/stock_data.db.gz \
-              "https://github.com/${{ github.repository }}/releases/download/$LATEST_TAG/stock_data.db.gz" \
-              || echo "⚠️ Download failed"
+            echo "📥 Downloading DBs from release: $LATEST_TAG"
             
-            if [ -f data/stock_data.db.gz ]; then
-              gunzip data/stock_data.db.gz
-              echo "✅ Database restored from release $LATEST_TAG"
-              # DB内容を確認
-              echo "📊 DB stats:"
-              go run -mod=mod <<'GOEOF'
-package main
-import (
-    "database/sql"
-    "fmt"
-    _ "modernc.org/sqlite"
-)
-func main() {
-    db, err := sql.Open("sqlite", "./data/stock_data.db")
-    if err != nil { fmt.Println("DB open error:", err); return }
-    defer db.Close()
-    var count int
-    db.QueryRow("SELECT COUNT(*) FROM stocks").Scan(&count)
-    fmt.Printf("  Total stocks: %d\n", count)
-    var withSales int
-    db.QueryRow("SELECT COUNT(*) FROM stocks WHERE net_sales > 0").Scan(&withSales)
-    fmt.Printf("  With sales data: %d\n", withSales)
-    var priceCount int
-    db.QueryRow("SELECT COUNT(DISTINCT code) FROM stock_prices").Scan(&priceCount)
-    fmt.Printf("  With price data: %d\n", priceCount)
-}
-GOEOF
+            # 3-DB構成
+            for DB_NAME in xbrl.db stock_price.db rs.db; do
+              curl -L -o "data/${DB_NAME}.gz" \
+                "https://github.com/${{ github.repository }}/releases/download/$LATEST_TAG/${DB_NAME}.gz" \
+                2>/dev/null || echo "⚠️ $DB_NAME not found"
+              
+              if [ -f "data/${DB_NAME}.gz" ]; then
+                gunzip "data/${DB_NAME}.gz"
+                echo "✅ $DB_NAME restored"
+              fi
+            done
+            
+            # レガシーDB対応
+            if [ ! -f data/xbrl.db ]; then
+              echo "  Trying legacy stock_data.db..."
+              curl -L -o data/stock_data.db.gz \
+                "https://github.com/${{ github.repository }}/releases/download/$LATEST_TAG/stock_data.db.gz" \
+                2>/dev/null || true
+              if [ -f data/stock_data.db.gz ]; then
+                gunzip data/stock_data.db.gz
+                echo "  ✅ Legacy DB restored (migration will run)"
+              fi
+            fi
+            
+            echo "📊 DB stats:"
+            if [ -f data/xbrl.db ]; then
+              sqlite3 data/xbrl.db "SELECT '  Stocks: ' || COUNT(*) FROM stocks;" 2>/dev/null || true
+            fi
+            if [ -f data/stock_price.db ]; then
+              sqlite3 data/stock_price.db "SELECT '  Prices: ' || COUNT(DISTINCT code) FROM stock_prices;" 2>/dev/null || true
             fi
           else
             echo "ℹ️ No previous release found"
           fi
 
       - name: Fallback - Generate fresh data if no DB
-        if: ${{ hashFiles('data/stock_data.db') == '' }}
+        if: ${{ hashFiles('data/xbrl.db') == '' && hashFiles('data/stock_data.db') == '' }}
         run: |
           mkdir -p data
           TODAY=$(date -u +%Y-%m-%d)
@@ -110,25 +109,57 @@ GOEOF
               PriceDate         *string `json:"PriceDate"`
           }
           func main() {
-              db, err := sql.Open("sqlite", "./data/stock_data.db")
+              // xbrl.db をメインとして開く
+              dbPath := "./data/xbrl.db"
+              if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+                  // レガシーDB
+                  dbPath = "./data/stock_data.db"
+              }
+              
+              db, err := sql.Open("sqlite", dbPath)
               if err != nil { fmt.Println("DB open error:", err); os.Exit(1) }
               defer db.Close()
 
-              rows, err := db.Query(`
+              // stock_price.db をアタッチ
+              priceDBPath := "./data/stock_price.db"
+              if _, err := os.Stat(priceDBPath); err == nil {
+                  db.Exec("ATTACH DATABASE './data/stock_price.db' AS price_db")
+              }
+
+              // クエリ: stock_price.db がアタッチされている場合
+              query := `
                   SELECT s.code, s.name, COALESCE(s.updated_at, ''),
                       COALESCE(s.net_sales, 0), COALESCE(s.operating_income, 0), COALESCE(s.net_income, 0),
                       COALESCE(s.total_assets, 0), COALESCE(s.net_assets, 0), COALESCE(s.current_assets, 0),
                       COALESCE(s.liabilities, 0), COALESCE(s.current_liabilities, 0),
                       COALESCE(s.cash_and_deposits, 0), COALESCE(s.shares_issued, 0),
-                      COALESCE(p.close, 0), p.date
+                      0, NULL
                   FROM stocks s
-                  LEFT JOIN (
-                      SELECT code, close, date,
-                          ROW_NUMBER() OVER (PARTITION BY code ORDER BY date DESC) as rn
-                      FROM stock_prices
-                  ) p ON s.code = p.code AND p.rn = 1
                   ORDER BY s.code ASC
-              `)
+              `
+              
+              // price_db がアタッチされていれば株価も結合
+              var hasPriceDB bool
+              db.QueryRow("SELECT 1 FROM price_db.stock_prices LIMIT 1").Scan(&hasPriceDB)
+              if hasPriceDB {
+                  query = `
+                      SELECT s.code, s.name, COALESCE(s.updated_at, ''),
+                          COALESCE(s.net_sales, 0), COALESCE(s.operating_income, 0), COALESCE(s.net_income, 0),
+                          COALESCE(s.total_assets, 0), COALESCE(s.net_assets, 0), COALESCE(s.current_assets, 0),
+                          COALESCE(s.liabilities, 0), COALESCE(s.current_liabilities, 0),
+                          COALESCE(s.cash_and_deposits, 0), COALESCE(s.shares_issued, 0),
+                          COALESCE(p.close, 0), p.date
+                      FROM stocks s
+                      LEFT JOIN (
+                          SELECT code, close, date,
+                              ROW_NUMBER() OVER (PARTITION BY code ORDER BY date DESC) as rn
+                          FROM price_db.stock_prices
+                      ) p ON s.code = p.code AND p.rn = 1
+                      ORDER BY s.code ASC
+                  `
+              }
+              
+              rows, err := db.Query(query)
               if err != nil { fmt.Println("Query error:", err); os.Exit(1) }
               defer rows.Close()
               
@@ -151,7 +182,6 @@ GOEOF
               os.WriteFile("./web/stocks.json", jsonData, 0644)
               fmt.Printf("✅ Generated stocks.json with %d records\n", len(stocks))
               
-              // 統計情報を出力
               withSales := 0
               withPrice := 0
               for _, s := range stocks {
