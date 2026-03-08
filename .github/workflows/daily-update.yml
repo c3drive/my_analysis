@@ -7,9 +7,9 @@ on:
   workflow_dispatch: # 手動実行も可能
     inputs:
       days_back:
-        description: '何日前まで遡って取得するか（デフォルト: 7）'
+        description: '何日前まで遡って取得するか（デフォルト: 30）'
         required: false
-        default: '7'
+        default: '30'
 
 jobs:
   update-data:
@@ -82,7 +82,7 @@ jobs:
       
       - name: Fetch EDINET data (multiple days)
         run: |
-          DAYS_BACK=${{ github.event.inputs.days_back || '7' }}
+          DAYS_BACK=${{ github.event.inputs.days_back || '30' }}
           echo "🚀 Fetching EDINET data for the past $DAYS_BACK days..."
           
           TOTAL_PROCESSED=0

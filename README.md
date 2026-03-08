@@ -1,6 +1,7 @@
 # EDINET XBRL Analyzer
 
 EDINET APIから上場企業の決算データを取得し、XBRLファイルを解析して財務分析を行うシステム。
+https://c3drive.github.io/my_analysis/
 
 ## 🚀 機能
 
@@ -221,4 +222,4 @@ MIT License
 
 ## 🙏 謝辞
 
-本プロジェクトは [kawasin73氏のブログ記事](https://kawasin73.hatenablog.com/entry/2025/11/20/224346) を参考にして開発されたわ。
+本プロジェクトは [kawasin73氏のブログ記事](https://kawasin73.hatenablog.com/entry/2025/11/20/224346) を参考にして開発された。

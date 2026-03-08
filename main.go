@@ -194,6 +194,15 @@ func runCollector(targetDate string) {
 	processedCount := 0
 	skippedCount := 0
 	errorCount := 0
+	emptyDataCount := 0
+
+	// パース成功率トラッキング
+	fieldStats := map[string]int{
+		"NetSales": 0, "OperatingIncome": 0, "NetIncome": 0,
+		"TotalAssets": 0, "NetAssets": 0, "CurrentAssets": 0,
+		"Liabilities": 0, "CurrentLiabilities": 0, "CashAndDeposits": 0, "SharesIssued": 0,
+	}
+	totalParsed := 0
 
 	for _, doc := range edinetRes.Results {
 		if doc.SecCode == "" {
@@ -217,6 +226,39 @@ func runCollector(targetDate string) {
 			continue // 空データでは保存しない
 		}
 
+		// パース成功率を記録
+		totalParsed++
+		if data.NetSales > 0 {
+			fieldStats["NetSales"]++
+		}
+		if data.OperatingIncome > 0 {
+			fieldStats["OperatingIncome"]++
+		}
+		if data.NetIncome > 0 {
+			fieldStats["NetIncome"]++
+		}
+		if data.TotalAssets > 0 {
+			fieldStats["TotalAssets"]++
+		}
+		if data.NetAssets > 0 {
+			fieldStats["NetAssets"]++
+		}
+		if data.CurrentAssets > 0 {
+			fieldStats["CurrentAssets"]++
+		}
+		if data.Liabilities > 0 {
+			fieldStats["Liabilities"]++
+		}
+		if data.CurrentLiabilities > 0 {
+			fieldStats["CurrentLiabilities"]++
+		}
+		if data.CashAndDeposits > 0 {
+			fieldStats["CashAndDeposits"]++
+		}
+		if data.SharesIssued > 0 {
+			fieldStats["SharesIssued"]++
+		}
+
 		// DBへ保存
 		err = saveStock(db, shortCode, doc.EntityName, doc.SubmissionDate, data)
 		if err != nil {
@@ -226,18 +268,41 @@ func runCollector(targetDate string) {
 			processedCount++
 		}
 	}
-	fmt.Printf("\n🔥 完了! 処理=%d件, スキップ=%d件, エラー=%d件\n", processedCount, skippedCount, errorCount)
+
+	// パース成功率レポート
+	fmt.Printf("\n🔥 完了! 処理=%d件, スキップ=%d件, エラー=%d件, 空データ=%d件\n", processedCount, skippedCount, errorCount, emptyDataCount)
+	if totalParsed > 0 {
+		fmt.Println("📊 パース成功率:")
+		for _, field := range []string{"NetSales", "OperatingIncome", "NetIncome", "TotalAssets", "NetAssets", "CurrentAssets", "Liabilities", "CurrentLiabilities", "CashAndDeposits", "SharesIssued"} {
+			rate := float64(fieldStats[field]) / float64(totalParsed) * 100
+			fmt.Printf("  %s: %d/%d (%.1f%%)\n", field, fieldStats[field], totalParsed, rate)
+		}
+	}
 }
 
-// saveStock は銘柄データをDBに保存する
+// saveStock は銘柄データをDBに保存する（UPSERT: 既存の有効データを空データで上書きしない）
 func saveStock(db *sql.DB, code, name, updatedAt string, data FinancialData) error {
 	_, err := db.Exec(`
-		INSERT OR REPLACE INTO stocks (
+		INSERT INTO stocks (
 			code, name, updated_at,
 			net_sales, operating_income, net_income,
 			total_assets, net_assets, current_assets,
 			liabilities, current_liabilities, cash_and_deposits, shares_issued
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(code) DO UPDATE SET
+			name = excluded.name,
+			updated_at = CASE WHEN excluded.updated_at != '' THEN excluded.updated_at ELSE stocks.updated_at END,
+			net_sales = CASE WHEN excluded.net_sales > 0 THEN excluded.net_sales ELSE stocks.net_sales END,
+			operating_income = CASE WHEN excluded.operating_income > 0 THEN excluded.operating_income ELSE stocks.operating_income END,
+			net_income = CASE WHEN excluded.net_income > 0 THEN excluded.net_income ELSE stocks.net_income END,
+			total_assets = CASE WHEN excluded.total_assets > 0 THEN excluded.total_assets ELSE stocks.total_assets END,
+			net_assets = CASE WHEN excluded.net_assets > 0 THEN excluded.net_assets ELSE stocks.net_assets END,
+			current_assets = CASE WHEN excluded.current_assets > 0 THEN excluded.current_assets ELSE stocks.current_assets END,
+			liabilities = CASE WHEN excluded.liabilities > 0 THEN excluded.liabilities ELSE stocks.liabilities END,
+			current_liabilities = CASE WHEN excluded.current_liabilities > 0 THEN excluded.current_liabilities ELSE stocks.current_liabilities END,
+			cash_and_deposits = CASE WHEN excluded.cash_and_deposits > 0 THEN excluded.cash_and_deposits ELSE stocks.cash_and_deposits END,
+			shares_issued = CASE WHEN excluded.shares_issued > 0 THEN excluded.shares_issued ELSE stocks.shares_issued END
+	`,
 		code, name, updatedAt,
 		data.NetSales, data.OperatingIncome, data.NetIncome,
 		data.TotalAssets, data.NetAssets, data.CurrentAssets,
@@ -587,11 +652,90 @@ func startServer() {
 		json.NewEncoder(w).Encode(stocks)
 	})
 
+	// 市場指数データAPI（市場天井検出用）
+	http.HandleFunc("/api/market-index/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		code := strings.TrimPrefix(r.URL.Path, "/api/market-index/")
+		if code == "" {
+			code = "^NKX" // デフォルトは日経225
+		}
+
+		db, err := sql.Open("sqlite", "./data/stock_price.db")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer db.Close()
+
+		// 全期間の株価データを返す（市場天井検出は長期データが必要）
+		rows, err := db.Query(`
+			SELECT code, date, open, high, low, close, volume
+			FROM stock_prices
+			WHERE code = ?
+			ORDER BY date ASC`, code)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var prices []StockPrice
+		for rows.Next() {
+			var p StockPrice
+			rows.Scan(&p.Code, &p.Date, &p.Open, &p.High, &p.Low, &p.Close, &p.Volume)
+			prices = append(prices, p)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(prices)
+	})
+
+	// 利用可能な銘柄コード一覧API（市場天井検出のプルダウン用）
+	http.HandleFunc("/api/available-codes", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		db, err := sql.Open("sqlite", "./data/stock_price.db")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer db.Close()
+
+		rows, err := db.Query(`
+			SELECT code, COUNT(*) as cnt, MIN(date) as from_date, MAX(date) as to_date
+			FROM stock_prices
+			GROUP BY code
+			HAVING cnt >= 30
+			ORDER BY cnt DESC`)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		type CodeInfo struct {
+			Code     string `json:"code"`
+			Count    int    `json:"count"`
+			FromDate string `json:"from_date"`
+			ToDate   string `json:"to_date"`
+		}
+		var codes []CodeInfo
+		for rows.Next() {
+			var c CodeInfo
+			rows.Scan(&c.Code, &c.Count, &c.FromDate, &c.ToDate)
+			codes = append(codes, c)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(codes)
+	})
+
 	fmt.Println("🌐 Dashboard starting at http://localhost:8080")
 	fmt.Println("📂 Serving static files from ./web/")
 	fmt.Println("📊 API endpoint: http://localhost:8080/api/stocks")
 	fmt.Println("📈 Price API: http://localhost:8080/api/prices/{code}")
 	fmt.Println("🚀 O'Neil Ranking API: http://localhost:8080/api/oneil-ranking")
+	fmt.Println("📉 Market Index API: http://localhost:8080/api/market-index/{code}")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 

@@ -5,7 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>マーケット天井検出 | 株式分析ダッシュボード</title>
-    <meta name="description" content="市場全体のEPSブレイク状況を監視し、マーケットの天井を検出するシステム。">
+    <meta name="description" content="分配日(Distribution Day)とストーリング(Stalling)を検出し、マーケットの天井シグナルを可視化するツール。">
+    <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -14,294 +16,1392 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0a0a1a 0%, #111128 50%, #0d1b2a 100%);
             min-height: 100vh;
             color: #e0e0e0;
         }
 
+        /* ナビゲーション */
+        .nav-bar {
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 12px 30px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            backdrop-filter: blur(20px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-bar a {
+            color: #8888aa;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: color 0.2s;
+        }
+
+        .nav-bar a:hover {
+            color: #a855f7;
+        }
+
+        .nav-bar .back-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #a855f7;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 8px;
+            background: rgba(168, 85, 247, 0.08);
+            border: 1px solid rgba(168, 85, 247, 0.15);
+        }
+
+        .nav-bar .back-btn:hover {
+            background: rgba(168, 85, 247, 0.15);
+        }
+
+        .nav-breadcrumb {
+            color: #555;
+            font-size: 0.85rem;
+        }
+
         .container {
-            max-width: 1400px;
+            max-width: 1500px;
             margin: 0 auto;
-            padding: 30px;
+            padding: 20px 30px 60px;
         }
 
-        header {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border-radius: 16px;
-            padding: 30px;
-            margin-bottom: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        /* ページヘッダー */
+        .page-header {
+            margin-bottom: 24px;
         }
 
-        h1 {
+        .page-title {
             font-size: 2rem;
-            background: linear-gradient(135deg, #a855f7, #ec4899);
+            font-weight: 700;
+            background: linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #f97316 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            margin-bottom: 10px;
+            margin-bottom: 6px;
         }
 
-        .subtitle {
-            color: #a0a0a0;
-            font-size: 1rem;
-        }
-
-        .nav {
-            display: flex;
-            gap: 10px;
-            margin: 25px 0 0 0;
-            flex-wrap: wrap;
-        }
-
-        .nav a {
-            color: #00d9ff;
-            text-decoration: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            background: rgba(0, 217, 255, 0.1);
-            border: 1px solid rgba(0, 217, 255, 0.3);
-            transition: all 0.3s ease;
+        .page-subtitle {
+            color: #666;
             font-size: 0.9rem;
         }
 
-        .nav a:hover,
-        .nav a.active {
-            background: rgba(168, 85, 247, 0.2);
-            border-color: #a855f7;
-            box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
-        }
-
-        .nav a.active {
-            color: #a855f7;
-        }
-
-        .info-box {
-            background: rgba(168, 85, 247, 0.1);
-            border: 1px solid rgba(168, 85, 247, 0.3);
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 30px;
-        }
-
-        .info-box h2 {
-            color: #a855f7;
-            font-size: 1.2rem;
-            margin-bottom: 15px;
-        }
-
-        .info-box p {
-            line-height: 1.8;
-            color: #b0b0b0;
-        }
-
-        .signal-cards {
+        /* レイアウト: 2カラム */
+        .main-layout {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin: 25px 0;
+            grid-template-columns: 320px 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* 左パネル: パラメータ設定 */
+        .params-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .param-section {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 14px;
+            padding: 18px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .param-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent, rgba(168, 85, 247, 0.4));
+        }
+
+        .param-section-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .param-row {
+            margin-bottom: 14px;
+        }
+
+        .param-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .param-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 6px;
+        }
+
+        .param-value {
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #a855f7;
+            border: 2px solid #0a0a1a;
+            box-shadow: 0 0 8px rgba(168, 85, 247, 0.4);
+            cursor: pointer;
+            transition: transform 0.15s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.3);
+            color: #ddd;
+            font-size: 0.85rem;
+            font-family: inherit;
+            outline: none;
+            cursor: pointer;
+        }
+
+        select:focus {
+            border-color: rgba(168, 85, 247, 0.5);
+        }
+
+        /* トグルスイッチ */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .toggle-row:last-child {
+            border-bottom: none;
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: #ccc;
+        }
+
+        .toggle-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: #666;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle-switch input:checked+.toggle-slider {
+            background: rgba(168, 85, 247, 0.4);
+        }
+
+        .toggle-switch input:checked+.toggle-slider::before {
+            transform: translateX(20px);
+            background: #a855f7;
+        }
+
+        /* 条件表示 */
+        .condition-text {
+            font-size: 0.72rem;
+            color: #555;
+            margin-top: 6px;
+            padding: 6px 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            line-height: 1.4;
+        }
+
+        /* 右パネル: チャートエリア */
+        .chart-area {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* シグナルサマリー */
+        .signal-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
         }
 
         .signal-card {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-        }
-
-        .signal-card.danger {
-            border: 1px solid rgba(239, 68, 68, 0.5);
-        }
-
-        .signal-card.warning {
-            border: 1px solid rgba(251, 191, 36, 0.5);
-        }
-
-        .signal-card.safe {
-            border: 1px solid rgba(34, 197, 94, 0.5);
-        }
-
-        .signal-icon {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-        }
-
-        .signal-name {
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-
-        .signal-description {
-            font-size: 0.8rem;
-            color: #888;
-        }
-
-        .status-bar {
-            display: flex;
-            gap: 30px;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
-        }
-
-        .status-item {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .status-label {
-            font-size: 0.8rem;
-            color: #888;
-            margin-bottom: 5px;
-        }
-
-        .status-value {
-            font-size: 1.3rem;
-            font-weight: bold;
-            color: #a855f7;
-        }
-
-        .coming-soon {
-            text-align: center;
-            padding: 80px 40px;
             background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 14px;
+            padding: 16px 18px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .signal-card:hover {
+            background: rgba(255, 255, 255, 0.06);
+            transform: translateY(-2px);
+        }
+
+        .signal-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+        }
+
+        .signal-card.safe::before {
+            background: rgba(0, 255, 136, 0.6);
+        }
+
+        .signal-card.warning::before {
+            background: rgba(255, 170, 0, 0.6);
+        }
+
+        .signal-card.danger::before {
+            background: rgba(255, 68, 102, 0.6);
+        }
+
+        .signal-card .signal-icon {
+            font-size: 1.8rem;
+            margin-bottom: 4px;
+        }
+
+        .signal-card .signal-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .signal-card .signal-label {
+            font-size: 0.72rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 4px;
+        }
+
+        /* チャートラッパー */
+        .chart-wrapper {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
             border-radius: 16px;
-            border: 2px dashed rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
         }
 
-        .coming-soon-icon {
-            font-size: 4rem;
-            margin-bottom: 20px;
+        .chart-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.3), transparent);
         }
 
-        .coming-soon h3 {
-            font-size: 1.5rem;
-            color: #666;
-            margin-bottom: 15px;
+        #market-chart {
+            width: 100%;
+            height: 520px;
+            border-radius: 8px;
+            overflow: hidden;
         }
 
-        .coming-soon p {
-            color: #555;
-            max-width: 500px;
-            margin: 0 auto;
-            line-height: 1.8;
+        .chart-tooltip {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            z-index: 10;
+            pointer-events: none;
+            font-size: 0.82rem;
         }
 
-        .requirements {
-            margin-top: 30px;
-            text-align: left;
-            display: inline-block;
-        }
-
-        .requirements h4 {
+        .tooltip-date {
             color: #888;
-            margin-bottom: 15px;
-            font-size: 0.9rem;
+            font-size: 0.75rem;
+            margin-bottom: 2px;
         }
 
-        .requirements ul {
-            list-style: none;
+        .tooltip-price {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #fff;
         }
 
-        .requirements li {
-            padding: 8px 0;
+        .tooltip-ohlc {
+            display: flex;
+            gap: 12px;
+            margin-top: 4px;
+        }
+
+        .tooltip-ohlc span {
+            color: #888;
+        }
+
+        .tooltip-ohlc .value {
+            color: #ddd;
+            font-weight: 500;
+        }
+
+        .tooltip-change {
+            margin-top: 2px;
+            font-size: 0.8rem;
+        }
+
+        .tooltip-volume {
             color: #666;
+            margin-top: 2px;
+        }
+
+        .tooltip-marker {
+            margin-top: 4px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* 凡例 */
+        .chart-legend {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            color: #888;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .legend-bar {
+            width: 16px;
+            height: 8px;
+            border-radius: 2px;
+        }
+
+        /* イベントログ */
+        .event-log {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 14px;
+            padding: 18px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .event-log-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 12px;
+        }
+
+        .event-item {
             display: flex;
             align-items: center;
             gap: 10px;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            font-size: 0.8rem;
         }
 
-        .requirements li::before {
-            content: '○';
-            color: #444;
+        .event-item:last-child {
+            border-bottom: none;
         }
 
-        .requirements li.done::before {
-            content: '✓';
+        .event-date {
+            color: #666;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            min-width: 85px;
+        }
+
+        .event-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            min-width: 24px;
+            text-align: center;
+        }
+
+        .event-badge.dist {
+            background: rgba(255, 68, 102, 0.2);
+            color: #ff4466;
+        }
+
+        .event-badge.stall {
+            background: rgba(0, 255, 136, 0.15);
             color: #00ff88;
+        }
+
+        .event-desc {
+            color: #999;
+        }
+
+        /* ローディング */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 400px;
+            color: #555;
+            font-size: 1rem;
+            gap: 12px;
+        }
+
+        .loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(168, 85, 247, 0.2);
+            border-top-color: #a855f7;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* スクロールバー */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(168, 85, 247, 0.3);
+            border-radius: 3px;
+        }
+
+        /* レスポンシブ */
+        @media (max-width: 768px) {
+            .container {
+                padding: 16px;
+            }
+
+            #market-chart {
+                height: 360px;
+            }
+
+            .signal-summary {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
     </style>
 </head>
 
 <body>
+    <!-- ナビゲーション -->
+    <nav class="nav-bar" id="nav-bar">
+        <a href="/" class="back-btn">← ダッシュボード</a>
+        <span class="nav-breadcrumb">/ マーケット天井検出</span>
+        <div style="flex:1"></div>
+        <a href="/net-net-value.html">ネットネット</a>
+        <a href="/oneil-screen.html">オニール</a>
+        <a href="/stock-detail.html">銘柄詳細</a>
+    </nav>
+
     <div class="container">
-        <header>
-            <h1>📈 マーケット天井検出</h1>
-            <p class="subtitle">市場全体のEPSブレイク状況を監視</p>
-
-            <nav class="nav">
-                <a href="index.html">📊 基本ダッシュボード</a>
-                <a href="net-net-value.html">💎 ネットネット分析</a>
-                <a href="oneil-screen.html">🚀 オニールスクリーニング</a>
-                <a href="market-top.html" class="active">📈 マーケット天井検出</a>
-            </nav>
-        </header>
-
-        <div class="info-box">
-            <h2>📖 マーケット天井検出とは？</h2>
-            <p>
-                市場全体の決算発表を分析し、EPSがコンセンサス予想を下回る（ブレイクする）
-                銘柄の割合を監視します。ブレイク率が急上昇すると、
-                市場全体が天井をつけるサインとなる可能性があります。
-            </p>
-
-            <div class="signal-cards">
-                <div class="signal-card safe">
-                    <div class="signal-icon">🟢</div>
-                    <div class="signal-name">安全圏</div>
-                    <div class="signal-description">ブレイク率 20%以下<br>市場は健全</div>
-                </div>
-                <div class="signal-card warning">
-                    <div class="signal-icon">🟡</div>
-                    <div class="signal-name">注意</div>
-                    <div class="signal-description">ブレイク率 20-40%<br>警戒が必要</div>
-                </div>
-                <div class="signal-card danger">
-                    <div class="signal-icon">🔴</div>
-                    <div class="signal-name">危険</div>
-                    <div class="signal-description">ブレイク率 40%以上<br>天井の可能性</div>
-                </div>
-            </div>
+        <div class="page-header">
+            <h1 class="page-title">📉 マーケット天井検出</h1>
+            <p class="page-subtitle">Distribution Day / Stalling Day 分析でマーケットの天井を可視化</p>
         </div>
 
-        <div class="status-bar">
-            <div class="status-item">
-                <span class="status-label">機能ステータス</span>
-                <span class="status-value" style="color: #ffa500;">🔧 開発中</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">必要データ</span>
-                <span class="status-value" style="color: #888;">EPS実績・予想値</span>
-            </div>
-        </div>
+        <div class="main-layout">
+            <!-- 左パネル: パラメータ設定 -->
+            <div class="params-panel">
+                <!-- 銘柄選択 -->
+                <div class="param-section" style="--accent: rgba(0, 217, 255, 0.4);">
+                    <div class="param-section-title">📊 銘柄選択</div>
+                    <div class="param-row">
+                        <select id="select-code">
+                            <option value="">読込中...</option>
+                        </select>
+                    </div>
+                    <div class="param-row" style="margin-top:8px;">
+                        <div class="param-label">
+                            <span>データ期間</span>
+                            <span class="param-value" id="data-range">-</span>
+                        </div>
+                    </div>
+                </div>
 
-        <div class="coming-soon">
-            <div class="coming-soon-icon">🚧</div>
-            <h3>この機能は現在開発中です</h3>
-            <p>
-                マーケット天井検出機能を利用するには、
-                決算発表日のEPS実績とコンセンサス予想の比較データが必要です。
-            </p>
+                <!-- マーカー表示 -->
+                <div class="param-section" style="--accent: rgba(255, 68, 102, 0.4);">
+                    <div class="param-section-title">🏷️ マーカー表示</div>
+                    <div class="toggle-row">
+                        <div class="toggle-label">
+                            <span class="toggle-dot" style="background:#ff4466;"></span>
+                            分配日 (D)
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-dist" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="toggle-row">
+                        <div class="toggle-label">
+                            <span class="toggle-dot" style="background:#00ff88;"></span>
+                            ストーリング (S)
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-stall" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
 
-            <div class="requirements">
-                <h4>実装に必要な項目:</h4>
-                <ul>
-                    <li class="done">EDINET APIからの書類取得</li>
-                    <li class="done">XBRLパース基盤</li>
-                    <li>EPS（実績値）の抽出</li>
-                    <li>決算発表日の記録</li>
-                    <li>コンセンサス予想データの取得</li>
-                    <li>ブレイク率計算ロジック</li>
-                    <li>時系列グラフの実装</li>
-                    <li>アラート通知機能</li>
-                </ul>
+                <!-- 分配日パラメータ -->
+                <div class="param-section" style="--accent: rgba(255, 68, 102, 0.4);">
+                    <div class="param-section-title">🔴 分配日 (Distribution)</div>
+                    <div class="param-row">
+                        <div class="param-label">
+                            <span>下落率 (以上)</span>
+                            <span class="param-value" id="dist-rate-val">-0.20%</span>
+                        </div>
+                        <input type="range" id="dist-rate" min="-1.0" max="0" step="0.01" value="-0.20">
+                    </div>
+                    <div class="condition-text" id="dist-condition">
+                        条件: 終値変化率 ≤ -0.20% AND 出来高 > 前日以上
+                    </div>
+                </div>
+
+                <!-- ストーリングパラメータ -->
+                <div class="param-section" style="--accent: rgba(0, 255, 136, 0.4);">
+                    <div class="param-section-title">🟢 ストーリング (Stalling)</div>
+                    <div class="param-row">
+                        <div class="param-label">
+                            <span>変化率 (下限)</span>
+                            <span class="param-value" id="stall-low-val">-0.10%</span>
+                        </div>
+                        <input type="range" id="stall-low" min="-0.5" max="0" step="0.01" value="-0.10">
+                    </div>
+                    <div class="param-row">
+                        <div class="param-label">
+                            <span>変化率 (上限)</span>
+                            <span class="param-value" id="stall-high-val">+0.30%</span>
+                        </div>
+                        <input type="range" id="stall-high" min="0" max="1.0" step="0.01" value="0.30">
+                    </div>
+                    <div class="condition-text" id="stall-condition">
+                        条件: -0.10% ≤ 変化率 ≤ +0.30% AND 出来高 > Y日平均×(1+X%)
+                    </div>
+                </div>
+
+                <!-- 出来高条件 -->
+                <div class="param-section" style="--accent: rgba(255, 170, 0, 0.4);">
+                    <div class="param-section-title">📊 出来高条件</div>
+                    <div class="param-row">
+                        <div class="param-label">
+                            <span>平均日数 (Y)</span>
+                            <span class="param-value" id="vol-avg-val">25日</span>
+                        </div>
+                        <input type="range" id="vol-avg" min="5" max="60" step="1" value="25">
+                    </div>
+                    <div class="param-row">
+                        <div class="param-label">
+                            <span>増加率 (X%)</span>
+                            <span class="param-value" id="vol-inc-val">5.0%</span>
+                        </div>
+                        <input type="range" id="vol-inc" min="0" max="30" step="0.5" value="5.0">
+                    </div>
+                </div>
+
+                <!-- 注意期間パラメータ -->
+                <div class="param-section" style="--accent: rgba(168, 85, 247, 0.4);">
+                    <div class="param-section-title">⚠️ 注意期間 (背景色)</div>
+                    <div class="param-row">
+                        <div class="param-label">
+                            <span>判定日数 (N)</span>
+                            <span class="param-value" id="danger-days-val">25日</span>
+                        </div>
+                        <input type="range" id="danger-days" min="10" max="50" step="1" value="25">
+                    </div>
+                    <div class="param-row">
+                        <div class="param-label">
+                            <span>マーカー合計 (M)</span>
+                            <span class="param-value" id="danger-total-val">6個</span>
+                        </div>
+                        <input type="range" id="danger-total" min="2" max="10" step="1" value="6">
+                    </div>
+                    <div class="param-row">
+                        <div class="param-label">
+                            <span>分配日閾値 (M_d)</span>
+                            <span class="param-value" id="danger-dist-val">4個</span>
+                        </div>
+                        <input type="range" id="danger-dist" min="1" max="8" step="1" value="4">
+                    </div>
+                    <div class="condition-text">
+                        N日間で合計M個以上 OR 分配日のみM_d個以上 → 注意期間
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右パネル: チャートエリア -->
+            <div class="chart-area">
+                <!-- シグナルサマリー -->
+                <div class="signal-summary" id="signal-summary">
+                    <div class="signal-card safe">
+                        <div class="signal-icon">📊</div>
+                        <div class="signal-value" id="total-data-count">-</div>
+                        <div class="signal-label">データ数</div>
+                    </div>
+                    <div class="signal-card" id="card-dist">
+                        <div class="signal-icon">🔴</div>
+                        <div class="signal-value" id="dist-count">-</div>
+                        <div class="signal-label">分配日</div>
+                    </div>
+                    <div class="signal-card" id="card-stall">
+                        <div class="signal-icon">🟢</div>
+                        <div class="signal-value" id="stall-count">-</div>
+                        <div class="signal-label">ストーリング</div>
+                    </div>
+                    <div class="signal-card" id="card-danger">
+                        <div class="signal-icon">⚠️</div>
+                        <div class="signal-value" id="danger-zone-count">-</div>
+                        <div class="signal-label">注意期間</div>
+                    </div>
+                    <div class="signal-card" id="card-status">
+                        <div class="signal-icon" id="status-icon">⏳</div>
+                        <div class="signal-value" id="current-status">-</div>
+                        <div class="signal-label">現在の状態</div>
+                    </div>
+                </div>
+
+                <!-- チャート -->
+                <div class="chart-wrapper">
+                    <div class="chart-tooltip" id="chart-tooltip" style="display:none;">
+                        <div class="tooltip-date" id="tooltip-date"></div>
+                        <div class="tooltip-price" id="tooltip-price"></div>
+                        <div class="tooltip-ohlc" id="tooltip-ohlc"></div>
+                        <div class="tooltip-change" id="tooltip-change"></div>
+                        <div class="tooltip-volume" id="tooltip-volume"></div>
+                        <div class="tooltip-marker" id="tooltip-marker" style="display:none;"></div>
+                    </div>
+                    <div id="market-chart">
+                        <div class="loading">
+                            <div class="loading-spinner"></div>
+                            銘柄を選択してください
+                        </div>
+                    </div>
+                    <div class="chart-legend" id="chart-legend">
+                        <div class="legend-item">
+                            <span class="legend-dot" style="background:#ff4466;"></span>
+                            分配日 (D)
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-dot" style="background:#00ff88;"></span>
+                            ストーリング (S)
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-bar"
+                                style="background:rgba(255,170,0,0.15);border:1px solid rgba(255,170,0,0.3);"></span>
+                            注意期間
+                        </div>
+                    </div>
+                </div>
+
+                <!-- イベントログ -->
+                <div class="event-log" id="event-log">
+                    <div class="event-log-title">📋 検出イベントログ（新しい順）</div>
+                    <div id="event-list">
+                        <div class="event-item">
+                            <span class="event-desc" style="color:#555;">銘柄を選択してデータを読み込んでください</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+
+    <script>
+        // ==============================================================
+        // Market Top Detection - State
+        // ==============================================================
+        let chart = null;
+        let candleSeries = null;
+        let volumeSeries = null;
+        let rawPriceData = [];
+        let processedData = [];
+        let markers = [];
+        let dangerZones = [];
+
+        // パラメータ
+        const params = {
+            distRate: -0.20,
+            stallLow: -0.10,
+            stallHigh: 0.30,
+            volAvg: 25,
+            volInc: 5.0,
+            dangerDays: 25,
+            dangerTotal: 6,
+            dangerDist: 4,
+            showDist: true,
+            showStall: true,
+        };
+
+        // ==============================================================
+        // 初期化
+        // ==============================================================
+        async function init() {
+            setupSliders();
+            setupToggles();
+            await loadAvailableCodes();
+        }
+
+        // ==============================================================
+        // 利用可能コード読み込み
+        // ==============================================================
+        async function loadAvailableCodes() {
+            const select = document.getElementById('select-code');
+            try {
+                const res = await fetch('/api/available-codes');
+                const codes = await res.json();
+
+                select.innerHTML = '<option value="">-- 銘柄を選択 --</option>';
+
+                if (codes && codes.length > 0) {
+                    codes.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c.code;
+                        opt.textContent = `${c.code} (${c.count}日分: ${c.from_date} ~ ${c.to_date})`;
+                        select.appendChild(opt);
+                    });
+                } else {
+                    select.innerHTML = '<option value="">データがありません</option>';
+                }
+            } catch (e) {
+                select.innerHTML = '<option value="">API接続エラー</option>';
+                console.error('Load codes error:', e);
+            }
+
+            select.addEventListener('change', () => {
+                if (select.value) {
+                    loadPriceData(select.value);
+                }
+            });
+        }
+
+        // ==============================================================
+        // 株価データ読み込み
+        // ==============================================================
+        async function loadPriceData(code) {
+            const container = document.getElementById('market-chart');
+            container.innerHTML = '<div class="loading"><div class="loading-spinner"></div> データ読込中...</div>';
+
+            try {
+                const res = await fetch(`/api/market-index/${code}`);
+                const prices = await res.json();
+
+                if (!prices || prices.length === 0) {
+                    container.innerHTML = '<div class="loading">株価データがありません</div>';
+                    return;
+                }
+
+                rawPriceData = prices.map(p => ({
+                    time: p.Date,
+                    open: p.Open,
+                    high: p.High,
+                    low: p.Low,
+                    close: p.Close,
+                    volume: p.Volume
+                }));
+
+                // 期間表示
+                document.getElementById('data-range').textContent =
+                    `${rawPriceData[0].time} ~ ${rawPriceData[rawPriceData.length - 1].time}`;
+                document.getElementById('total-data-count').textContent = rawPriceData.length;
+
+                // 分析＋描画
+                analyze();
+                renderChart();
+
+            } catch (e) {
+                container.innerHTML = '<div class="loading">データ取得エラー</div>';
+                console.error('Load price data error:', e);
+            }
+        }
+
+        // ==============================================================
+        // 分析ロジック
+        // ==============================================================
+        function analyze() {
+            processedData = [];
+            markers = [];
+            dangerZones = [];
+
+            if (rawPriceData.length < 2) return;
+
+            // 出来高移動平均を計算
+            for (let i = 0; i < rawPriceData.length; i++) {
+                const d = rawPriceData[i];
+                const prev = i > 0 ? rawPriceData[i - 1] : null;
+                const changeRate = prev ? ((d.close - prev.close) / prev.close) * 100 : 0;
+
+                // Y日間の出来高平均
+                let volAvgValue = 0;
+                const volWindow = Math.min(params.volAvg, i);
+                if (volWindow > 0) {
+                    let volSum = 0;
+                    for (let j = i - volWindow; j < i; j++) {
+                        volSum += rawPriceData[j].volume;
+                    }
+                    volAvgValue = volSum / volWindow;
+                }
+
+                const volThreshold = volAvgValue * (1 + params.volInc / 100);
+                const isHighVolume = d.volume > volThreshold;
+                const isAbovePrevVolume = prev ? d.volume >= prev.volume : false;
+
+                // 分配日判定: 下落 + 出来高が前日以上
+                const isDist = prev &&
+                    changeRate <= params.distRate &&
+                    isAbovePrevVolume;
+
+                // ストーリング判定: 微変動 + 出来高増加
+                const isStall = prev &&
+                    changeRate >= params.stallLow &&
+                    changeRate <= params.stallHigh &&
+                    isHighVolume &&
+                    changeRate < 0.5; // 大幅上昇は除外
+
+                processedData.push({
+                    ...d,
+                    changeRate,
+                    volAvg: volAvgValue,
+                    isDist,
+                    isStall,
+                });
+            }
+
+            // マーカー生成
+            const distEvents = [];
+            const stallEvents = [];
+
+            processedData.forEach((d, i) => {
+                if (d.isDist && params.showDist) {
+                    markers.push({
+                        time: d.time,
+                        position: 'aboveBar',
+                        color: '#ff4466',
+                        shape: 'arrowDown',
+                        text: 'D',
+                    });
+                    distEvents.push({ date: d.time, type: 'dist', changeRate: d.changeRate, volume: d.volume });
+                }
+                if (d.isStall && params.showStall) {
+                    markers.push({
+                        time: d.time,
+                        position: 'belowBar',
+                        color: '#00ff88',
+                        shape: 'arrowUp',
+                        text: 'S',
+                    });
+                    stallEvents.push({ date: d.time, type: 'stall', changeRate: d.changeRate, volume: d.volume });
+                }
+            });
+
+            // 注意期間計算
+            // N日ウィンドウで合計M個以上 OR 分配日のみM_d個以上
+            for (let i = 0; i < processedData.length; i++) {
+                const windowStart = Math.max(0, i - params.dangerDays + 1);
+                let totalMarkers = 0;
+                let distMarkers = 0;
+
+                for (let j = windowStart; j <= i; j++) {
+                    if (processedData[j].isDist) {
+                        totalMarkers++;
+                        distMarkers++;
+                    }
+                    if (processedData[j].isStall) {
+                        totalMarkers++;
+                    }
+                }
+
+                processedData[i].isDanger =
+                    totalMarkers >= params.dangerTotal ||
+                    distMarkers >= params.dangerDist;
+                processedData[i].totalMarkersInWindow = totalMarkers;
+                processedData[i].distMarkersInWindow = distMarkers;
+            }
+
+            // 注意期間をゾーンとしてまとめる
+            let inDanger = false;
+            let zoneStart = null;
+            processedData.forEach((d, i) => {
+                if (d.isDanger && !inDanger) {
+                    zoneStart = d.time;
+                    inDanger = true;
+                } else if (!d.isDanger && inDanger) {
+                    dangerZones.push({
+                        start: zoneStart,
+                        end: processedData[i - 1].time,
+                    });
+                    inDanger = false;
+                }
+            });
+            if (inDanger) {
+                dangerZones.push({
+                    start: zoneStart,
+                    end: processedData[processedData.length - 1].time,
+                });
+            }
+
+            // サマリー更新
+            document.getElementById('dist-count').textContent = distEvents.length;
+            document.getElementById('stall-count').textContent = stallEvents.length;
+            document.getElementById('danger-zone-count').textContent = dangerZones.length;
+
+            // カードスタイル更新
+            const cardDist = document.getElementById('card-dist');
+            cardDist.className = 'signal-card' + (distEvents.length > 10 ? ' danger' : distEvents.length > 5 ? ' warning' : ' safe');
+
+            const cardStall = document.getElementById('card-stall');
+            cardStall.className = 'signal-card' + (stallEvents.length > 15 ? ' warning' : ' safe');
+
+            const cardDanger = document.getElementById('card-danger');
+            cardDanger.className = 'signal-card' + (dangerZones.length > 3 ? ' danger' : dangerZones.length > 1 ? ' warning' : ' safe');
+
+            // 現在のステータス
+            const lastData = processedData[processedData.length - 1];
+            const statusIcon = document.getElementById('status-icon');
+            const statusText = document.getElementById('current-status');
+            const cardStatus = document.getElementById('card-status');
+
+            if (lastData && lastData.isDanger) {
+                statusIcon.textContent = '🔴';
+                statusText.textContent = '注意';
+                statusText.style.color = '#ff4466';
+                cardStatus.className = 'signal-card danger';
+            } else if (lastData && lastData.totalMarkersInWindow >= params.dangerTotal - 2) {
+                statusIcon.textContent = '🟡';
+                statusText.textContent = '警戒';
+                statusText.style.color = '#ffaa00';
+                cardStatus.className = 'signal-card warning';
+            } else {
+                statusIcon.textContent = '🟢';
+                statusText.textContent = '正常';
+                statusText.style.color = '#00ff88';
+                cardStatus.className = 'signal-card safe';
+            }
+
+            // イベントログ更新
+            renderEventLog([...distEvents, ...stallEvents].sort((a, b) => b.date.localeCompare(a.date)));
+        }
+
+        // ==============================================================
+        // チャート描画
+        // ==============================================================
+        function renderChart() {
+            const container = document.getElementById('market-chart');
+            container.innerHTML = '';
+
+            chart = LightweightCharts.createChart(container, {
+                layout: {
+                    background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' },
+                    textColor: '#555',
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: 11,
+                },
+                grid: {
+                    vertLines: { color: 'rgba(255,255,255,0.02)' },
+                    horzLines: { color: 'rgba(255,255,255,0.02)' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: {
+                        color: 'rgba(168, 85, 247, 0.3)',
+                        labelBackgroundColor: '#1a1a3e',
+                    },
+                    horzLine: {
+                        color: 'rgba(168, 85, 247, 0.3)',
+                        labelBackgroundColor: '#1a1a3e',
+                    },
+                },
+                timeScale: {
+                    borderColor: 'rgba(255,255,255,0.06)',
+                    timeVisible: false,
+                    rightOffset: 5,
+                },
+                rightPriceScale: {
+                    borderColor: 'rgba(255,255,255,0.06)',
+                },
+                handleScroll: { vertTouchDrag: false },
+            });
+
+            // ローソク足
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#00ff88',
+                downColor: '#ff4466',
+                borderUpColor: '#00ff88',
+                borderDownColor: '#ff4466',
+                wickUpColor: '#00ff88',
+                wickDownColor: '#ff4466',
+            });
+
+            // 注意期間の背景マーカーをキャンドルのデータに反映
+            const candleData = processedData.map(d => {
+                const base = {
+                    time: d.time,
+                    open: d.open,
+                    high: d.high,
+                    low: d.low,
+                    close: d.close,
+                };
+                // 注意期間の日はキャンドルの色を変える
+                if (d.isDanger) {
+                    base.color = d.close >= d.open ? 'rgba(255, 170, 0, 0.7)' : 'rgba(255, 100, 0, 0.8)';
+                    base.borderColor = d.close >= d.open ? '#ffaa00' : '#ff6400';
+                    base.wickColor = d.close >= d.open ? 'rgba(255, 170, 0, 0.5)' : 'rgba(255, 100, 0, 0.5)';
+                }
+                return base;
+            });
+            candleSeries.setData(candleData);
+
+            // マーカー設置
+            if (markers.length > 0) {
+                candleSeries.setMarkers(markers);
+            }
+
+            // 出来高
+            volumeSeries = chart.addHistogramSeries({
+                priceFormat: { type: 'volume' },
+                priceScaleId: 'volume',
+            });
+            chart.priceScale('volume').applyOptions({
+                scaleMargins: { top: 0.85, bottom: 0 },
+            });
+
+            volumeSeries.setData(processedData.map(d => {
+                let color;
+                if (d.isDist) {
+                    color = 'rgba(255, 68, 102, 0.4)';
+                } else if (d.isStall) {
+                    color = 'rgba(0, 255, 136, 0.3)';
+                } else {
+                    color = d.close >= d.open ? 'rgba(0,255,136,0.1)' : 'rgba(255,68,102,0.1)';
+                }
+                return {
+                    time: d.time,
+                    value: d.volume,
+                    color,
+                };
+            }));
+
+            // ツールチップ
+            setupTooltip();
+
+            // リサイズ
+            const resizeObserver = new ResizeObserver(() => {
+                chart.applyOptions({ width: container.clientWidth });
+            });
+            resizeObserver.observe(container);
+
+            chart.timeScale().fitContent();
+        }
+
+        // ==============================================================
+        // ツールチップ
+        // ==============================================================
+        function setupTooltip() {
+            const tooltip = document.getElementById('chart-tooltip');
+            const tooltipDate = document.getElementById('tooltip-date');
+            const tooltipPrice = document.getElementById('tooltip-price');
+            const tooltipOhlc = document.getElementById('tooltip-ohlc');
+            const tooltipChange = document.getElementById('tooltip-change');
+            const tooltipVol = document.getElementById('tooltip-volume');
+            const tooltipMarker = document.getElementById('tooltip-marker');
+
+            chart.subscribeCrosshairMove(param => {
+                if (!param.time || !param.seriesData.size) {
+                    tooltip.style.display = 'none';
+                    return;
+                }
+
+                tooltip.style.display = 'block';
+                const data = param.seriesData.get(candleSeries);
+                if (!data) return;
+
+                // 対応するprocessedDataを検索
+                const pd = processedData.find(d => d.time === param.time);
+                if (!pd) return;
+
+                tooltipDate.textContent = pd.time;
+
+                const change = data.close - data.open;
+                const changePercent = ((change / data.open) * 100).toFixed(2);
+                const color = change >= 0 ? '#00ff88' : '#ff4466';
+                const sign = change >= 0 ? '+' : '';
+
+                tooltipPrice.innerHTML = `<span style="color:${color}">${data.close.toLocaleString()}</span>`;
+                tooltipOhlc.innerHTML = `
+                    <span>始 <span class="value">${data.open.toLocaleString()}</span></span>
+                    <span>高 <span class="value">${data.high.toLocaleString()}</span></span>
+                    <span>安 <span class="value">${data.low.toLocaleString()}</span></span>
+                    <span>終 <span class="value">${data.close.toLocaleString()}</span></span>`;
+                tooltipChange.innerHTML = `<span style="color:${color}">${sign}${change.toFixed(0)} (${sign}${changePercent}%)</span>`;
+                tooltipVol.textContent = `出来高: ${(pd.volume || 0).toLocaleString()}`;
+
+                // マーカー情報
+                if (pd.isDist || pd.isStall) {
+                    tooltipMarker.style.display = 'inline-block';
+                    if (pd.isDist) {
+                        tooltipMarker.textContent = '🔴 分配日';
+                        tooltipMarker.style.background = 'rgba(255,68,102,0.2)';
+                        tooltipMarker.style.color = '#ff4466';
+                    } else {
+                        tooltipMarker.textContent = '🟢 ストーリング';
+                        tooltipMarker.style.background = 'rgba(0,255,136,0.15)';
+                        tooltipMarker.style.color = '#00ff88';
+                    }
+                } else if (pd.isDanger) {
+                    tooltipMarker.style.display = 'inline-block';
+                    tooltipMarker.textContent = `⚠️ 注意期間 (D:${pd.distMarkersInWindow} S:${pd.totalMarkersInWindow - pd.distMarkersInWindow})`;
+                    tooltipMarker.style.background = 'rgba(255,170,0,0.15)';
+                    tooltipMarker.style.color = '#ffaa00';
+                } else {
+                    tooltipMarker.style.display = 'none';
+                }
+            });
+        }
+
+        // ==============================================================
+        // イベントログ
+        // ==============================================================
+        function renderEventLog(events) {
+            const list = document.getElementById('event-list');
+            if (events.length === 0) {
+                list.innerHTML = '<div class="event-item"><span class="event-desc" style="color:#555;">検出イベントなし</span></div>';
+                return;
+            }
+
+            // 最新50件を表示
+            const display = events.slice(0, 50);
+            list.innerHTML = display.map(e => {
+                const typeClass = e.type === 'dist' ? 'dist' : 'stall';
+                const typeLabel = e.type === 'dist' ? 'D' : 'S';
+                const desc = e.type === 'dist'
+                    ? `変化率 ${e.changeRate.toFixed(2)}%`
+                    : `変化率 ${e.changeRate.toFixed(2)}%`;
+                return `
+                    <div class="event-item">
+                        <span class="event-date">${e.date}</span>
+                        <span class="event-badge ${typeClass}">${typeLabel}</span>
+                        <span class="event-desc">${desc} / 出来高 ${e.volume.toLocaleString()}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ==============================================================
+        // スライダー設定
+        // ==============================================================
+        function setupSliders() {
+            const sliders = {
+                'dist-rate': {
+                    key: 'distRate',
+                    label: 'dist-rate-val',
+                    format: v => `${parseFloat(v).toFixed(2)}%`,
+                },
+                'stall-low': {
+                    key: 'stallLow',
+                    label: 'stall-low-val',
+                    format: v => `${parseFloat(v).toFixed(2)}%`,
+                },
+                'stall-high': {
+                    key: 'stallHigh',
+                    label: 'stall-high-val',
+                    format: v => `+${parseFloat(v).toFixed(2)}%`,
+                },
+                'vol-avg': {
+                    key: 'volAvg',
+                    label: 'vol-avg-val',
+                    format: v => `${v}日`,
+                },
+                'vol-inc': {
+                    key: 'volInc',
+                    label: 'vol-inc-val',
+                    format: v => `${parseFloat(v).toFixed(1)}%`,
+                },
+                'danger-days': {
+                    key: 'dangerDays',
+                    label: 'danger-days-val',
+                    format: v => `${v}日`,
+                },
+                'danger-total': {
+                    key: 'dangerTotal',
+                    label: 'danger-total-val',
+                    format: v => `${v}個`,
+                },
+                'danger-dist': {
+                    key: 'dangerDist',
+                    label: 'danger-dist-val',
+                    format: v => `${v}個`,
+                },
+            };
+
+            let debounceTimer = null;
+
+            Object.entries(sliders).forEach(([id, config]) => {
+                const slider = document.getElementById(id);
+                slider.addEventListener('input', () => {
+                    const val = slider.value;
+                    params[config.key] = parseFloat(val);
+                    document.getElementById(config.label).textContent = config.format(val);
+
+                    // 条件テキスト更新
+                    updateConditionText();
+
+                    // デバウンスして再分析（パフォーマンス対策）
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => {
+                        if (rawPriceData.length > 0) {
+                            analyze();
+                            renderChart();
+                        }
+                    }, 200);
+                });
+            });
+        }
+
+        function updateConditionText() {
+            document.getElementById('dist-condition').textContent =
+                `条件: 終値変化率 ≤ ${params.distRate.toFixed(2)}% AND 出来高 ≥ 前日`;
+            document.getElementById('stall-condition').textContent =
+                `条件: ${params.stallLow.toFixed(2)}% ≤ 変化率 ≤ +${params.stallHigh.toFixed(2)}% AND 出来高 > ${params.volAvg}日平均×(1+${params.volInc.toFixed(1)}%)`;
+        }
+
+        // ==============================================================
+        // トグル設定
+        // ==============================================================
+        function setupToggles() {
+            document.getElementById('toggle-dist').addEventListener('change', function () {
+                params.showDist = this.checked;
+                if (rawPriceData.length > 0) {
+                    analyze();
+                    renderChart();
+                }
+            });
+
+            document.getElementById('toggle-stall').addEventListener('change', function () {
+                params.showStall = this.checked;
+                if (rawPriceData.length > 0) {
+                    analyze();
+                    renderChart();
+                }
+            });
+        }
+
+        // ==============================================================
+        // 起動
+        // ==============================================================
+        init();
+    </script>
 </body>
 
 </html>
