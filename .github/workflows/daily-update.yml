@@ -132,18 +132,47 @@ jobs:
           EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
 
       - name: Post-update DB statistics
+        id: post-stats
         run: |
           echo "📊 Post-update statistics:"
+          TOTAL_STOCKS="0"; WITH_SALES="0"; WITH_INCOME="0"; PRICE_STOCKS="0"
           if [ -f data/xbrl.db ]; then
-            sqlite3 data/xbrl.db "SELECT '  Total stocks: ' || COUNT(*) FROM stocks;"
-            sqlite3 data/xbrl.db "SELECT '  With sales: ' || COUNT(*) FROM stocks WHERE net_sales > 0;"
-            sqlite3 data/xbrl.db "SELECT '  With net_income: ' || COUNT(*) FROM stocks WHERE net_income > 0;"
-            sqlite3 data/xbrl.db "SELECT '  With total_assets: ' || COUNT(*) FROM stocks WHERE total_assets > 0;"
-            sqlite3 data/xbrl.db "SELECT '  Latest date: ' || MAX(updated_at) FROM stocks WHERE updated_at != '';"
+            TOTAL_STOCKS=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks;" 2>/dev/null || echo "0")
+            WITH_SALES=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE net_sales > 0;" 2>/dev/null || echo "0")
+            WITH_INCOME=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE net_income > 0;" 2>/dev/null || echo "0")
+            LATEST_DATE=$(sqlite3 data/xbrl.db "SELECT MAX(updated_at) FROM stocks WHERE updated_at != '';" 2>/dev/null || echo "N/A")
+            echo "  Total stocks: $TOTAL_STOCKS"
+            echo "  With sales: $WITH_SALES"
+            echo "  With net_income: $WITH_INCOME"
+            echo "  Latest date: $LATEST_DATE"
           fi
           if [ -f data/stock_price.db ]; then
-            sqlite3 data/stock_price.db "SELECT '  Stocks with prices: ' || COUNT(DISTINCT code) FROM stock_prices;"
+            PRICE_STOCKS=$(sqlite3 data/stock_price.db "SELECT COUNT(DISTINCT code) FROM stock_prices;" 2>/dev/null || echo "0")
+            echo "  Stocks with prices: $PRICE_STOCKS"
           fi
+          echo "total_stocks=$TOTAL_STOCKS" >> $GITHUB_OUTPUT
+          echo "with_sales=$WITH_SALES" >> $GITHUB_OUTPUT
+          echo "with_income=$WITH_INCOME" >> $GITHUB_OUTPUT
+          echo "price_stocks=$PRICE_STOCKS" >> $GITHUB_OUTPUT
+
+      - name: Detect new stocks
+        id: new-stocks
+        continue-on-error: true
+        run: |
+          NEW_COUNT=0
+          if [ -f data/xbrl.db ]; then
+            WEEK_AGO=$(date -u -d "7 days ago" +%Y-%m-%d 2>/dev/null || date -u -v-7d +%Y-%m-%d)
+            NEW_STOCKS=$(sqlite3 data/xbrl.db "SELECT code || ' ' || name FROM stocks WHERE updated_at >= '$WEEK_AGO' AND net_sales > 0 ORDER BY code;" 2>/dev/null || echo "")
+            if [ -n "$NEW_STOCKS" ]; then
+              NEW_COUNT=$(echo "$NEW_STOCKS" | wc -l | tr -d ' ')
+            fi
+            echo "🆕 New stocks in last 7 days: $NEW_COUNT"
+          fi
+          echo "new_count=$NEW_COUNT" >> $GITHUB_OUTPUT
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "new_list<<$EOF" >> $GITHUB_OUTPUT
+          echo "${NEW_STOCKS:-none}" >> $GITHUB_OUTPUT
+          echo "$EOF" >> $GITHUB_OUTPUT
 
       - name: Compress databases
         run: |
@@ -161,8 +190,6 @@ jobs:
           STOCK_COUNT=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks;" 2>/dev/null || echo "unknown")
           SALES_COUNT=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE net_sales > 0;" 2>/dev/null || echo "unknown")
           PRICE_COUNT=$(sqlite3 data/stock_price.db "SELECT COUNT(DISTINCT code) FROM stock_prices;" 2>/dev/null || echo "unknown")
-          
-          # 合計サイズ
           TOTAL_SIZE=0
           for f in data/xbrl.db.gz data/stock_price.db.gz data/rs.db.gz; do
             if [ -f "$f" ]; then
@@ -170,7 +197,6 @@ jobs:
               TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
             fi
           done
-          
           echo "date=$DATE" >> $GITHUB_OUTPUT
           echo "stock_count=$STOCK_COUNT" >> $GITHUB_OUTPUT
           echo "sales_count=$SALES_COUNT" >> $GITHUB_OUTPUT
@@ -196,17 +222,6 @@ jobs:
             - `xbrl.db.gz` - 財務データ（EDINET XBRL）
             - `stock_price.db.gz` - 株価データ（Stooq）
             - `rs.db.gz` - リラティブストレングス
-            
-            **Download:**
-            ```bash
-            for f in xbrl.db stock_price.db rs.db; do
-              wget https://github.com/${{ github.repository }}/releases/download/data-${{ steps.db-info.outputs.date }}/${f}.gz
-              gunzip ${f}.gz
-            done
-            ```
-            
-            **Web Dashboard:**
-            - [View Analysis](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }})
           files: |
             data/xbrl.db.gz
             data/stock_price.db.gz
@@ -215,6 +230,35 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write Job Summary
+        run: |
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          RELEASE_TAG="data-${{ steps.db-info.outputs.date }}"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/$RELEASE_TAG"
+          DL_URL="https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG"
+          
+          cat << 'SUMMARY' >> $GITHUB_STEP_SUMMARY
+          ## 📊 Daily Update Summary
+          
+          | 指標 | 値 |
+          |------|------|
+          SUMMARY
+          echo "| 総銘柄数 | ${{ steps.post-stats.outputs.total_stocks }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 売上データあり | ${{ steps.post-stats.outputs.with_sales }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 純利益データあり | ${{ steps.post-stats.outputs.with_income }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 株価データあり | ${{ steps.post-stats.outputs.price_stocks }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 今回追加 | ${{ steps.fetch-data.outputs.total_new }} 件 |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📥 DB Download" >> $GITHUB_STEP_SUMMARY
+          echo "- [📦 Release: $RELEASE_TAG]($RELEASE_URL)" >> $GITHUB_STEP_SUMMARY
+          echo "- [xbrl.db.gz]($DL_URL/xbrl.db.gz) | [stock_price.db.gz]($DL_URL/stock_price.db.gz) | [rs.db.gz]($DL_URL/rs.db.gz)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🌐 Analysis Pages" >> $GITHUB_STEP_SUMMARY
+          echo "- [📊 Dashboard]($PAGES_URL/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [💎 ネットネットバリュー]($PAGES_URL/net-net-value.html)" >> $GITHUB_STEP_SUMMARY
+          echo "- [🚀 オニールスクリーニング]($PAGES_URL/oneil-screen.html)" >> $GITHUB_STEP_SUMMARY
+          echo "- [📈 マーケット天井検出]($PAGES_URL/market-top.html)" >> $GITHUB_STEP_SUMMARY
       
       - name: Update latest tag
         continue-on-error: true
@@ -223,6 +267,24 @@ jobs:
           git config user.email github-actions@github.com
           git tag -f latest
           git push origin latest --force
+
+      - name: Create issue for new stocks
+        if: steps.new-stocks.outputs.new_count != '0' && steps.new-stocks.outputs.new_count != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const newCount = '${{ steps.new-stocks.outputs.new_count }}';
+            const newList = `${{ steps.new-stocks.outputs.new_list }}`;
+            const date = '${{ steps.db-info.outputs.date }}';
+            const pagesUrl = 'https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}';
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🆕 ${newCount} new stocks detected - ${date}`,
+              body: `## 新規銘柄検出\n\n**検出日**: ${date}\n**新規銘柄数**: ${newCount}\n\n### 銘柄一覧\n\`\`\`\n${newList}\n\`\`\`\n\n### 確認リンク\n- [Dashboard](${pagesUrl}/)\n- [ネットネットバリュー](${pagesUrl}/net-net-value.html)\n- [オニールスクリーニング](${pagesUrl}/oneil-screen.html)`,
+              labels: ['automation', 'new-stock']
+            });
       
       - name: Create issue on failure or zero data
         if: failure() || steps.fetch-data.outputs.total_processed == '0'
@@ -252,3 +314,4 @@ jobs:
               body: body,
               labels: ['automation', isFailure ? 'bug' : 'data-quality']
             });
+

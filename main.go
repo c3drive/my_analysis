@@ -991,63 +991,98 @@ func migrateFromLegacyDB() {
 // EDINETのXBRL形式:
 //   - 経営指標サマリー: jpcrp_cor:XXXSummaryOfBusinessResults (contextRef="CurrentYearDuration/Instant")
 //   - 財務諸表本体: jppfs_cor:XXX (contextRef="CurrentYearDuration/Instant")
+//   - 四半期: contextRef="CurrentQuarterDuration" or "CurrentYTDDuration"
+//   - 非連結: contextRefに "_NonConsolidatedMember" サフィックス
 var xbrlTagPatterns = map[string]*regexp.Regexp{
-	// 売上高: サマリー（連結優先）
+	// ====== 売上高 ======
+	// サマリー（連結・年度）
 	"NetSales": regexp.MustCompile(`<jpcrp_cor:NetSalesSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
-	// 売上高: サマリー（非連結も含む）
+	// サマリー（非連結含む）
 	"NetSalesFallback": regexp.MustCompile(`<jpcrp_cor:NetSalesSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
-	// 売上高: 財務諸表本体
-	"NetSalesFallback2": regexp.MustCompile(`<jppfs_cor:NetSales[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
+	// 財務諸表本体
+	"NetSalesFallback2": regexp.MustCompile(`<jppfs_cor:NetSales[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
+	// 四半期累計
+	"NetSalesFallback3": regexp.MustCompile(`<jpcrp_cor:NetSalesSummaryOfBusinessResults[^>]*contextRef="CurrentYTDDuration[^"]*"[^>]*>(\d+)</`),
+	// IFRS適用企業の売上収益
+	"NetSalesFallback4": regexp.MustCompile(`<jpcrp_cor:RevenueIFRSSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
 	// 営業収益（銀行・保険など）
 	"OperatingRevenues": regexp.MustCompile(`<jpcrp_cor:OperatingRevenue[12]SummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
+	// 四半期営業収益
+	"OperatingRevenuesFallback": regexp.MustCompile(`<jpcrp_cor:OperatingRevenue[12]SummaryOfBusinessResults[^>]*contextRef="CurrentYTDDuration[^"]*"[^>]*>(\d+)</`),
 
-	// 営業利益: サマリー（連結優先）
-	"OperatingIncome":          regexp.MustCompile(`<jpcrp_cor:OperatingIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
-	"OperatingIncomeFallback":  regexp.MustCompile(`<jpcrp_cor:OperatingIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
-	"OperatingIncomeFallback2": regexp.MustCompile(`<jppfs_cor:OperatingIncome[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
+	// ====== 営業利益 ======
+	// サマリー（連結）
+	"OperatingIncome": regexp.MustCompile(`<jpcrp_cor:OperatingIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration"[^>]*>(-?\d+)</`),
+	// サマリー（非連結含む）
+	"OperatingIncomeFallback": regexp.MustCompile(`<jpcrp_cor:OperatingIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
+	// 財務諸表本体
+	"OperatingIncomeFallback2": regexp.MustCompile(`<jppfs_cor:OperatingIncome[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
+	// 四半期累計
+	"OperatingIncomeFallback3": regexp.MustCompile(`<jpcrp_cor:OperatingIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYTDDuration[^"]*"[^>]*>(-?\d+)</`),
 
-	// 経常利益
-	"OrdinaryIncome": regexp.MustCompile(`<jpcrp_cor:OrdinaryIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
+	// ====== 経常利益 ======
+	"OrdinaryIncome": regexp.MustCompile(`<jpcrp_cor:OrdinaryIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
+	"OrdinaryIncomeFallback": regexp.MustCompile(`<jpcrp_cor:OrdinaryIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYTDDuration[^"]*"[^>]*>(-?\d+)</`),
 
-	// 純利益（親会社株主帰属）: サマリー（連結優先）
-	"NetIncome": regexp.MustCompile(`<jpcrp_cor:ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
-	// 純利益: 非連結サマリー
-	"NetIncomeFallback": regexp.MustCompile(`<jpcrp_cor:ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
-	// 純利益: 財務諸表本体
-	"NetIncomeFallback2": regexp.MustCompile(`<jppfs_cor:ProfitLoss[^>]*contextRef="CurrentYearDuration"[^>]*>(\d+)</`),
-	// 純利益: 非連結(NetIncomeLoss)
-	"NetIncomeFallback3": regexp.MustCompile(`<jpcrp_cor:NetIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(\d+)</`),
+	// ====== 純利益 ======
+	// 親会社株主帰属 サマリー（連結）
+	"NetIncome": regexp.MustCompile(`<jpcrp_cor:ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration"[^>]*>(-?\d+)</`),
+	// 親会社株主帰属 サマリー（非連結含む）
+	"NetIncomeFallback": regexp.MustCompile(`<jpcrp_cor:ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
+	// 財務諸表本体 当期純利益
+	"NetIncomeFallback2": regexp.MustCompile(`<jppfs_cor:ProfitLoss[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
+	// 非連結 NetIncomeLoss
+	"NetIncomeFallback3": regexp.MustCompile(`<jpcrp_cor:NetIncomeLossSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
+	// 四半期累計 純利益
+	"NetIncomeFallback4": regexp.MustCompile(`<jpcrp_cor:ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults[^>]*contextRef="CurrentYTDDuration[^"]*"[^>]*>(-?\d+)</`),
+	// IFRS 親会社帰属利益
+	"NetIncomeFallback5": regexp.MustCompile(`<jpcrp_cor:ProfitLossAttributableToOwnersOfParentIFRSSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
 
-	// 総資産: サマリー（連結優先）
+	// ====== 総資産 ======
+	// サマリー（連結）
 	"TotalAssets": regexp.MustCompile(`<jpcrp_cor:TotalAssetsSummaryOfBusinessResults[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
-	// 総資産: サマリー（非連結含む）
+	// サマリー（非連結含む）
 	"TotalAssetsFallback": regexp.MustCompile(`<jpcrp_cor:TotalAssetsSummaryOfBusinessResults[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
-	// 総資産: 財務諸表本体
-	"TotalAssetsFallback2": regexp.MustCompile(`<jppfs_cor:Assets[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+	// 財務諸表本体
+	"TotalAssetsFallback2": regexp.MustCompile(`<jppfs_cor:Assets[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	// 四半期末時点
+	"TotalAssetsFallback3": regexp.MustCompile(`<jpcrp_cor:TotalAssetsSummaryOfBusinessResults[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
 
-	// 純資産: サマリー（連結優先）
+	// ====== 純資産 ======
+	// サマリー（連結）
 	"NetAssets": regexp.MustCompile(`<jpcrp_cor:NetAssetsSummaryOfBusinessResults[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
-	// 純資産: サマリー（非連結含む）
+	// サマリー（非連結含む）
 	"NetAssetsFallback": regexp.MustCompile(`<jpcrp_cor:NetAssetsSummaryOfBusinessResults[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
-	// 純資産: 財務諸表
-	"NetAssetsFallback2": regexp.MustCompile(`<jppfs_cor:NetAssets[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+	// 財務諸表本体
+	"NetAssetsFallback2": regexp.MustCompile(`<jppfs_cor:NetAssets[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	// 四半期末時点
+	"NetAssetsFallback3": regexp.MustCompile(`<jpcrp_cor:NetAssetsSummaryOfBusinessResults[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
+	// 株主資本（EquityAttributableToOwnersOfParent - IFRS用）
+	"NetAssetsFallback4": regexp.MustCompile(`<jpcrp_cor:EquityAttributableToOwnersOfParentIFRSSummaryOfBusinessResults[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
 
-	// 流動資産
-	"CurrentAssets": regexp.MustCompile(`<jppfs_cor:CurrentAssets[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+	// ====== 流動資産 ======
+	"CurrentAssets": regexp.MustCompile(`<jppfs_cor:CurrentAssets[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	"CurrentAssetsFallback": regexp.MustCompile(`<jppfs_cor:CurrentAssets[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
 
-	// 負債合計
-	"Liabilities": regexp.MustCompile(`<jppfs_cor:Liabilities[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+	// ====== 負債合計 ======
+	"Liabilities": regexp.MustCompile(`<jppfs_cor:Liabilities[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	"LiabilitiesFallback": regexp.MustCompile(`<jppfs_cor:Liabilities[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
 
-	// 流動負債
-	"CurrentLiabilities": regexp.MustCompile(`<jppfs_cor:CurrentLiabilities[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+	// ====== 流動負債 ======
+	"CurrentLiabilities": regexp.MustCompile(`<jppfs_cor:CurrentLiabilities[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	"CurrentLiabilitiesFallback": regexp.MustCompile(`<jppfs_cor:CurrentLiabilities[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
 
-	// 現金預金
-	"CashAndDeposits": regexp.MustCompile(`<jppfs_cor:CashAndDeposits[^>]*contextRef="CurrentYearInstant"[^>]*>(\d+)</`),
+	// ====== 現金預金 ======
+	"CashAndDeposits": regexp.MustCompile(`<jppfs_cor:CashAndDeposits[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	"CashAndDepositsFallback": regexp.MustCompile(`<jppfs_cor:CashAndDeposits[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
 
-	// 発行済株式数: サマリー（contextRefにNonConsolidatedMember等が付く場合あり）
+	// ====== 発行済株式数 ======
+	// サマリー（contextRefにNonConsolidatedMember等が付く場合あり）
 	"SharesIssued": regexp.MustCompile(`<jpcrp_cor:TotalNumberOfIssuedSharesSummaryOfBusinessResults[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
-	// 発行済株式数フォールバック
-	"SharesIssuedFallback": regexp.MustCompile(`<jpcrp_cor:NumberOfIssuedSharesAsOfFilingDateEtcTotalNumberOfSharesEtc[^>]*>(\d+)</`),
+	// 四半期末時点
+	"SharesIssuedFallback": regexp.MustCompile(`<jpcrp_cor:TotalNumberOfIssuedSharesSummaryOfBusinessResults[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
+	// 提出日時点の発行済株式数
+	"SharesIssuedFallback2": regexp.MustCompile(`<jpcrp_cor:NumberOfIssuedSharesAsOfFilingDateEtcTotalNumberOfSharesEtc[^>]*>(\d+)</`),
 }
 
 // downloadAndParseXBRL はXBRLをダウンロードして財務データを抽出する
@@ -1095,6 +1130,78 @@ func downloadAndParseXBRL(docID string) (FinancialData, error) {
 	return parseXBRLFromZip(zipReader)
 }
 
+// getBaseTagName はフォールバックタグ名からベースタグ名を取得する
+func getBaseTagName(tagName string) string {
+	// Fallback5 → Fallback4 → ... → Fallback → base の順で除去
+	for _, suffix := range []string{"Fallback5", "Fallback4", "Fallback3", "Fallback2", "Fallback"} {
+		if strings.HasSuffix(tagName, suffix) {
+			return strings.TrimSuffix(tagName, suffix)
+		}
+	}
+	return tagName
+}
+
+// applyXBRLValue は抽出した値をFinancialDataに設定する
+func applyXBRLValue(data *FinancialData, found map[string]bool, baseName string, value int64) {
+	switch baseName {
+	case "NetSales", "OperatingRevenues":
+		if !found["NetSales"] {
+			data.NetSales = value
+			found["NetSales"] = true
+		}
+	case "OperatingIncome":
+		if !found["OperatingIncome"] {
+			data.OperatingIncome = value
+			found["OperatingIncome"] = true
+		}
+	case "OrdinaryIncome":
+		// 経常利益 → OperatingIncomeが0なら代用
+		if !found["OperatingIncome"] {
+			data.OperatingIncome = value
+		}
+	case "NetIncome":
+		if !found["NetIncome"] {
+			data.NetIncome = value
+			found["NetIncome"] = true
+		}
+	case "TotalAssets":
+		if !found["TotalAssets"] {
+			data.TotalAssets = value
+			found["TotalAssets"] = true
+		}
+	case "NetAssets":
+		if !found["NetAssets"] {
+			data.NetAssets = value
+			found["NetAssets"] = true
+		}
+	case "CurrentAssets":
+		if !found["CurrentAssets"] {
+			data.CurrentAssets = value
+			found["CurrentAssets"] = true
+		}
+	case "Liabilities":
+		if !found["Liabilities"] {
+			data.Liabilities = value
+			found["Liabilities"] = true
+		}
+	case "CurrentLiabilities":
+		if !found["CurrentLiabilities"] {
+			data.CurrentLiabilities = value
+			found["CurrentLiabilities"] = true
+		}
+	case "CashAndDeposits":
+		if !found["CashAndDeposits"] {
+			data.CashAndDeposits = value
+			found["CashAndDeposits"] = true
+		}
+	case "SharesIssued":
+		if !found["SharesIssued"] {
+			data.SharesIssued = value
+			found["SharesIssued"] = true
+		}
+	}
+}
+
 // parseXBRLFromZip はZIP内のXBRLファイルを解析して財務データを抽出
 func parseXBRLFromZip(zipReader *zip.Reader) (FinancialData, error) {
 	var data FinancialData
@@ -1120,84 +1227,28 @@ func parseXBRLFromZip(zipReader *zip.Reader) (FinancialData, error) {
 
 		// 各タグパターンを検索
 		for tagName, pattern := range xbrlTagPatterns {
+			baseName := getBaseTagName(tagName)
+
+			// 既にベースタグで取得済みならスキップ
+			if found[baseName] {
+				continue
+			}
+
 			matches := pattern.FindStringSubmatch(contentStr)
 			if len(matches) >= 2 {
 				value, _ := strconv.ParseInt(matches[1], 10, 64)
-				if value > 0 {
-					// フォールバックの場合はベースタグ名を取得
-					baseName := strings.TrimSuffix(tagName, "Fallback")
-					baseName = strings.TrimSuffix(baseName, "Fallback3")
-					baseName = strings.TrimSuffix(baseName, "Fallback2")
-
-					// 既にベースタグで取得済みならスキップ
-					if found[baseName] {
-						continue
-					}
-
-					switch baseName {
-					case "NetSales", "OperatingRevenues":
-						if data.NetSales == 0 {
-							data.NetSales = value
-							found["NetSales"] = true
-						}
-					case "OperatingIncome":
-						if data.OperatingIncome == 0 {
-							data.OperatingIncome = value
-							found["OperatingIncome"] = true
-						}
-					case "OrdinaryIncome":
-						// 経常利益 → OperatingIncomeが0なら代用
-						if data.OperatingIncome == 0 {
-							data.OperatingIncome = value
-						}
-					case "NetIncome":
-						if data.NetIncome == 0 {
-							data.NetIncome = value
-							found["NetIncome"] = true
-						}
-					case "TotalAssets":
-						if data.TotalAssets == 0 {
-							data.TotalAssets = value
-							found["TotalAssets"] = true
-						}
-					case "NetAssets":
-						if data.NetAssets == 0 {
-							data.NetAssets = value
-							found["NetAssets"] = true
-						}
-					case "CurrentAssets":
-						if data.CurrentAssets == 0 {
-							data.CurrentAssets = value
-							found["CurrentAssets"] = true
-						}
-					case "Liabilities":
-						if data.Liabilities == 0 {
-							data.Liabilities = value
-							found["Liabilities"] = true
-						}
-					case "CurrentLiabilities":
-						if data.CurrentLiabilities == 0 {
-							data.CurrentLiabilities = value
-							found["CurrentLiabilities"] = true
-						}
-					case "CashAndDeposits":
-						if data.CashAndDeposits == 0 {
-							data.CashAndDeposits = value
-							found["CashAndDeposits"] = true
-						}
-					case "SharesIssued":
-						if data.SharesIssued == 0 {
-							data.SharesIssued = value
-							found["SharesIssued"] = true
-						}
-					}
+				// 売上・資産系はプラスのみ、利益系はマイナスも許容
+				isProfit := baseName == "OperatingIncome" || baseName == "OrdinaryIncome" || baseName == "NetIncome"
+				if value > 0 || (isProfit && value != 0) {
+					applyXBRLValue(&data, found, baseName, value)
 				}
 			}
 		}
 	}
 
-	// 何かデータが取れたかチェック
-	if data.NetSales == 0 && data.TotalAssets == 0 && data.NetAssets == 0 {
+	// 何かデータが取れたかチェック（1つでもあればOK）
+	if data.NetSales == 0 && data.TotalAssets == 0 && data.NetAssets == 0 &&
+		data.NetIncome == 0 && data.OperatingIncome == 0 && data.SharesIssued == 0 {
 		return data, fmt.Errorf("no financial data found in XBRL")
 	}
 
@@ -1254,59 +1305,19 @@ func parseLocalFile(filePath string) (FinancialData, error) {
 	found := make(map[string]bool)
 
 	for tagName, pattern := range xbrlTagPatterns {
+		baseName := getBaseTagName(tagName)
+
+		// 既にベースタグで取得済みならスキップ
+		if found[baseName] {
+			continue
+		}
+
 		matches := pattern.FindStringSubmatch(contentStr)
 		if len(matches) >= 2 {
 			value, _ := strconv.ParseInt(matches[1], 10, 64)
-			if value > 0 {
-				baseName := strings.TrimSuffix(tagName, "Fallback")
-				baseName = strings.TrimSuffix(baseName, "Fallback2")
-				if found[baseName] {
-					continue
-				}
-				switch baseName {
-				case "NetSales", "OperatingRevenues":
-					if data.NetSales == 0 {
-						data.NetSales = value
-						found["NetSales"] = true
-					}
-				case "OperatingIncome":
-					if data.OperatingIncome == 0 {
-						data.OperatingIncome = value
-						found["OperatingIncome"] = true
-					}
-				case "OrdinaryIncome":
-					if data.OperatingIncome == 0 {
-						data.OperatingIncome = value
-					}
-				case "NetIncome":
-					if data.NetIncome == 0 {
-						data.NetIncome = value
-						found["NetIncome"] = true
-					}
-				case "TotalAssets":
-					if data.TotalAssets == 0 {
-						data.TotalAssets = value
-						found["TotalAssets"] = true
-					}
-				case "NetAssets":
-					if data.NetAssets == 0 {
-						data.NetAssets = value
-						found["NetAssets"] = true
-					}
-				case "CurrentAssets":
-					data.CurrentAssets = value
-				case "Liabilities":
-					data.Liabilities = value
-				case "CurrentLiabilities":
-					data.CurrentLiabilities = value
-				case "CashAndDeposits":
-					data.CashAndDeposits = value
-				case "SharesIssued":
-					if data.SharesIssued == 0 {
-						data.SharesIssued = value
-						found["SharesIssued"] = true
-					}
-				}
+			isProfit := baseName == "OperatingIncome" || baseName == "OrdinaryIncome" || baseName == "NetIncome"
+			if value > 0 || (isProfit && value != 0) {
+				applyXBRLValue(&data, found, baseName, value)
 			}
 		}
 	}

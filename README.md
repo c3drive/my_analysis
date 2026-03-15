@@ -16,26 +16,27 @@ https://c3drive.github.io/my_analysis/
 ┌─────────────────────────────────────────────────┐
 │          GitHub Actions (日次バッチ)              │
 │  ┌─────────────────────────────────────────┐   │
-│  │ 1. EDINET APIからデータ取得              │   │
+│  │ 1. EDINET APIからデータ取得（30日遡り）  │   │
 │  │ 2. XBRLファイルをパース                  │   │
-│  │ 3. SQLiteに保存                          │   │
-│  │ 4. gzip圧縮                              │   │
-│  │ 5. GitHub Releasesにアップロード         │   │
+│  │ 3. SQLite 3DB構成に保存                  │   │
+│  │ 4. Stooq APIから株価取得                 │   │
+│  │ 5. gzip圧縮 → GitHub Releasesへ         │   │
 │  └─────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────┘
                         │
                         ▼
          ┌──────────────────────────┐
          │   GitHub Releases         │
-         │  stock_data.db.gz         │
-         │  (永続保存)               │
+         │  xbrl.db.gz (財務データ)  │
+         │  stock_price.db.gz (株価) │
+         │  rs.db.gz (RS指標)        │
          └──────────────────────────┘
                         │
                         ▼
          ┌──────────────────────────┐
          │    GitHub Pages           │
-         │  静的HTML + sqlite-wasm   │
-         │  ブラウザでDB解析         │
+         │  静的HTML + JSON API      │
+         │  ブラウザで分析           │
          └──────────────────────────┘
 ```
 
@@ -56,21 +57,25 @@ https://c3drive.github.io/my_analysis/
 .
 ├── .github/
 │   └── workflows/
-│       ├── daily-update.yml      # 日次データ更新
-│       └── deploy-pages.yml      # GitHub Pages デプロイ
+│       ├── daily-update.yml      # 日次データ更新（30日遡り取得）
+│       ├── deploy-pages.yml      # GitHub Pages デプロイ
+│       └── ci.yaml               # CI（ビルド確認）
 ├── data/
-│   ├── raw/                      # 生XBRLファイル
-│   ├── stock_data.db             # SQLiteデータベース
-│   └── stock_data.db.gz          # 圧縮版（配信用）
+│   ├── xbrl.db                   # 財務データDB（EDINET XBRL）
+│   ├── stock_price.db            # 株価データDB（Stooq）
+│   ├── rs.db                     # リラティブストレングスDB
+│   └── stock_data.db             # レガシーDB（自動移行対応）
 ├── web/
 │   ├── index.html                # メインダッシュボード
-│   ├── net-net-value.html        # ネットネット分析
-│   ├── oneil-screen.html         # オニールスクリーニング
-│   └── market-top.html           # マーケット天井検出
+│   ├── net-net-value.html        # ネットネットバリュー分析
+│   ├── oneil-screen.html         # オニール成長株スクリーニング
+│   ├── market-top.html           # マーケット天井検出
+│   └── stock-detail.html         # 銘柄詳細（チャート・指標）
 ├── scripts/
 │   └── compress_db.sh            # DB圧縮スクリプト
 ├── main.go                       # メインロジック
 ├── Taskfile.yml                  # タスク定義
+├── TODO.md                       # 詳細TODO・進捗管理
 └── README.md
 ```
 
@@ -162,27 +167,27 @@ task clean          # データベースのクリーンアップ
 EDINET_API_KEY=your_api_key_here
 ```
 
-## 📈 今後の実装予定
+## 📈 実装状況
 
-### Phase 1: データ層の強化
-- [ ] 株価データの取得と保存
-- [ ] EPS・純資産の抽出
-- [ ] 決算発表日の記録
+### ✅ 完了済み
+- [x] 株価データの取得と保存（Stooq API）
+- [x] EPS・ROE・PER・PBR の計算
+- [x] ネットネットバリュー計算（カスタム係数対応）
+- [x] オニール成長株スクリーニング（基本スコアリング）
+- [x] マーケット天井検出（パラメータ調整可能）
+- [x] 銘柄詳細ページ（ローソク足チャート＋指標カード）
+- [x] lightweight-charts v4/v5 導入
+- [x] 3DB構成（xbrl.db / stock_price.db / rs.db）
+- [x] UPSERT による空データ上書き防止
+- [x] XBRLパース改善（四半期/IFRS/非連結/赤字対応）
 
-### Phase 2: 分析機能
-- [ ] ネットネットバリュー計算
-- [ ] オニール成長株スクリーニング
-- [ ] マーケット天井検出ロジック
+### 🔜 今後の予定
+- [ ] 銘柄数拡大（バルクロード実施）
+- [ ] RS（リラティブストレングス）計算実装
+- [ ] 新規銘柄発見時のGitHub Issue通知
+- [ ] データカバレッジダッシュボード
 
-### Phase 3: UI改善
-- [ ] インタラクティブなチャート
-- [ ] フィルタリング機能
-- [ ] レスポンシブデザイン
-
-### Phase 4: 通知機能
-- [ ] 新規銘柄の自動検出
-- [ ] GitHub Issue での通知
-- [ ] 条件達成時のアラート
+> 詳細は [TODO.md](./TODO.md) を参照
 
 ## ⚡ トラブルシューティング
 

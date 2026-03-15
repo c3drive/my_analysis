@@ -2,7 +2,7 @@
 
 **参考**: [kawasin73さんの記事](https://kawasin73.hatenablog.com/entry/2025/11/20/224346)
 
-**最終更新**: 2026-03-08
+**最終更新**: 2026-03-15
 
 ---
 
@@ -23,9 +23,9 @@
 ### 2. GitHub Actions 拡張
 - [x] 最新ReleasesからSQLiteダウンロード
 - [x] 更新済みSQLiteをReleasesにアップロード
-- [ ] **GitHub Actions Summary** にDB downloadリンク表示
-- [ ] 解析ページリンクをSummaryに出力
-- [ ] **新規銘柄発見時のIssue作成**（Daily Notification）
+- [x] **GitHub Actions Summary** にDB downloadリンク表示
+- [x] 解析ページリンクをSummaryに出力
+- [x] **新規銘柄発見時のIssue作成**（Daily Notification）
 
 ### 3. GitHub Pages ページ構成
 - [x] `oneil-screen.html` - オニール成長株アナライザー（プレースホルダー）
@@ -104,10 +104,10 @@
   - 土日は自動スキップ
 
 **Phase 3: XBRLパース改善**
-- [ ] **XBRLパースの正規表現を改善**（EDINETの実際のタグ形式を調査）
+- [x] **XBRLパースの正規表現を改善**（EDINETの実際のタグ形式を調査）
 - [ ] **テスト用にXBRLファイルをダウンロードして解析ログを出力**
-- [ ] **有価証券報告書（docTypeCode=120）を優先的にパース**
-- [ ] **四半期報告書（140）・半期報告書（160）のXBRL形式にも対応**
+- [x] **有価証券報告書（docTypeCode=120）を優先的にパース**
+- [x] **四半期報告書（140）・半期報告書（160）のXBRL形式にも対応**
 
 **Phase 4: データカバレッジ拡大**
 - [ ] **日本株全銘柄リスト**を外部から取得（JPX証券コード一覧CSV）
@@ -462,11 +462,11 @@
   - 完成したDBを `gh release upload` でアップロード
   - その後は日次更新で差分追加
 
-#### P1: saveStock の空データ上書き防止
-- [ ] **saveStock で空データ保存をスキップするガード追加**
+#### P1: saveStock の空データ上書き防止 ✅ 完了
+- [x] **saveStock で空データ保存をスキップするガード追加**
   - 全てのフィールドが0の場合は `INSERT OR REPLACE` をスキップ
   - 既存レコードがあり、新データが空の場合は更新しない
-- [ ] **INSERT OR REPLACE → UPSERT with COALESCE に変更**
+- [x] **INSERT OR REPLACE → UPSERT with COALESCE に変更**
   ```sql
   INSERT INTO stocks (...) VALUES (...)
   ON CONFLICT(code) DO UPDATE SET
@@ -474,21 +474,21 @@
     ...
   ```
 
-#### P2: XBRLパース成功率の向上
-- [ ] **現在のパース成功率を計測するログ追加**
+#### P2: XBRLパース成功率の向上 ✅ 主要改善完了
+- [x] **現在のパース成功率を計測するログ追加**
   - 各フィールドごとに「取得できた件数 / 処理した件数」を出力
-- [ ] **XBRLタグパターンの拡充**
-  - 現在: 正規表現で特定のタグのみマッチ
-  - 改善: 複数のタグバリエーションに対応（連結/非連結/四半期）
-  - 参考: kawasin73さんの実装はより多くのパターンに対応
-- [ ] **四半期報告書のパースロジック改善**
-  - 年次と四半期でXBRLのコンテキストIDが異なる
-  - `CurrentYearDuration` vs `CurrentQuarterDuration` 対応
-- [ ] **コンテキストIDフォールバック**
+- [x] **XBRLタグパターンの拡充**
+  - 複数のタグバリエーションに対応（連結/非連結/四半期/IFRS）
+  - 各フィールドにFallback3〜5まで追加
+  - マイナス値（赤字）の営業利益・純利益にも対応
+- [x] **四半期報告書のパースロジック改善**
+  - `CurrentYTDDuration` / `CurrentQuarterDuration` / `CurrentQuarterInstant` 対応
+- [x] **コンテキストIDフォールバック**
   - 連結→非連結→個別の順でフォールバック
+  - `getBaseTagName()` と `applyXBRLValue()` でDRY化
 
 #### P3: 日次更新の改善
-- [ ] **daily-update.yml の days_back デフォルト値を 30 に増加**
+- [x] **daily-update.yml の days_back デフォルト値を 30 に増加**
   - 現在の7日では祝日や連休を挟むとデータ漏れが発生
   - 30日にすれば月に1回の有報提出をカバー可能
 - [ ] **更新統計の改善**
@@ -522,8 +522,8 @@
 7. ~~**銘柄詳細ページ** → チャート・主要指標~~ ✅ 完了
 8. ~~**市場天井検出** → パラメータUI・チャート~~ ✅ v1完了
 9. **🚨 銘柄数問題修正（P0: バルクロード）** → ローカルバッチ実行 or バルクロードWF
-10. **🚨 saveStock の空データ上書き防止（P1）** → UPSERT + COALESCE
-11. **🚨 XBRLパース成功率向上（P2）** → タグパターン拡充
-12. **日次更新改善（P3）** → days_back=30 + 品質レポート
+10. ~~**🚨 saveStock の空データ上書き防止（P1）** → UPSERT + COALESCE~~ ✅ 完了
+11. ~~**🚨 XBRLパース成功率向上（P2）** → タグパターン拡充~~ ✅ 完了
+12. ~~**日次更新改善（P3）** → days_back=30~~ ✅ 完了 + 品質レポート
 13. **RS計算実装** → リラティブストレングスの計算ロジック
 14. **ネットネット計算改善** → カスタム係数の追加・削除
