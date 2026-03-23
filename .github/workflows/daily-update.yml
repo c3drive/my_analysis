@@ -131,6 +131,12 @@ jobs:
         env:
           EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
 
+      - name: Calculate Relative Strength
+        continue-on-error: true
+        run: |
+          echo "📊 Calculating RS scores..."
+          go run main.go -mode=calc-rs 2>&1 || echo "⚠️ RS calculation had issues"
+
       - name: Post-update DB statistics
         id: post-stats
         run: |
@@ -187,9 +193,6 @@ jobs:
         id: db-info
         run: |
           DATE=$(date -u +%Y-%m-%d)
-          STOCK_COUNT=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks;" 2>/dev/null || echo "unknown")
-          SALES_COUNT=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE net_sales > 0;" 2>/dev/null || echo "unknown")
-          PRICE_COUNT=$(sqlite3 data/stock_price.db "SELECT COUNT(DISTINCT code) FROM stock_prices;" 2>/dev/null || echo "unknown")
           TOTAL_SIZE=0
           for f in data/xbrl.db.gz data/stock_price.db.gz data/rs.db.gz; do
             if [ -f "$f" ]; then
@@ -198,9 +201,9 @@ jobs:
             fi
           done
           echo "date=$DATE" >> $GITHUB_OUTPUT
-          echo "stock_count=$STOCK_COUNT" >> $GITHUB_OUTPUT
-          echo "sales_count=$SALES_COUNT" >> $GITHUB_OUTPUT
-          echo "price_count=$PRICE_COUNT" >> $GITHUB_OUTPUT
+          echo "stock_count=${{ steps.post-stats.outputs.total_stocks }}" >> $GITHUB_OUTPUT
+          echo "sales_count=${{ steps.post-stats.outputs.with_sales }}" >> $GITHUB_OUTPUT
+          echo "price_count=${{ steps.post-stats.outputs.price_stocks }}" >> $GITHUB_OUTPUT
           echo "total_size=$TOTAL_SIZE" >> $GITHUB_OUTPUT
       
       - name: Create GitHub Release

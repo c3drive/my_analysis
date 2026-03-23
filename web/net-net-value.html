@@ -612,6 +612,169 @@
         .animate-in {
             animation: fadeIn 0.4s ease-out;
         }
+
+        /* Custom item add/remove */
+        .custom-items-container {
+            margin-top: 12px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            padding-top: 12px;
+        }
+
+        .custom-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 10px;
+            padding: 8px;
+            background: rgba(123, 97, 255, 0.06);
+            border: 1px solid rgba(123, 97, 255, 0.15);
+            border-radius: 8px;
+        }
+
+        .custom-item input[type="text"] {
+            width: 80px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 4px;
+            padding: 4px 6px;
+            color: #e0e0e0;
+            font-size: 0.78rem;
+        }
+
+        .custom-item input[type="range"] {
+            flex: 1;
+            height: 3px;
+            -webkit-appearance: none;
+            appearance: none;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.1);
+            outline: none;
+        }
+
+        .custom-item input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #7b61ff;
+            cursor: pointer;
+        }
+
+        .custom-item .coeff-value {
+            font-size: 0.75rem;
+            min-width: 32px;
+            color: #7b61ff;
+        }
+
+        .btn-remove-item {
+            background: rgba(255,107,107,0.15);
+            border: 1px solid rgba(255,107,107,0.3);
+            color: #ff6b6b;
+            width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .btn-remove-item:hover {
+            background: rgba(255,107,107,0.3);
+        }
+
+        .btn-add-item {
+            width: 100%;
+            padding: 8px;
+            border: 1px dashed rgba(123, 97, 255, 0.4);
+            background: transparent;
+            color: #7b61ff;
+            font-size: 0.82rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 6px;
+        }
+
+        .btn-add-item:hover {
+            background: rgba(123, 97, 255, 0.1);
+            border-color: rgba(123, 97, 255, 0.6);
+        }
+
+        /* Code add section */
+        .code-add-row {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .code-add-input {
+            flex: 1;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 6px;
+            padding: 8px 10px;
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            font-family: 'Courier New', monospace;
+        }
+
+        .code-add-input::placeholder {
+            color: #445566;
+        }
+
+        .code-add-input:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+
+        .btn-add-code {
+            padding: 8px 14px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            color: #00d9ff;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-add-code:hover {
+            background: rgba(0, 217, 255, 0.2);
+        }
+
+        .pinned-codes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .pinned-code-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 12px;
+            font-size: 0.75rem;
+            color: #00d9ff;
+            font-family: 'Courier New', monospace;
+        }
+
+        .pinned-code-tag button {
+            background: none;
+            border: none;
+            color: #ff6b6b;
+            cursor: pointer;
+            font-size: 0.7rem;
+            padding: 0;
+            line-height: 1;
+        }
     </style>
 </head>
 
@@ -690,6 +853,24 @@
 
                     <button class="btn-recalc" id="btn-recalc" onclick="recalculate()">🔄 再計算</button>
                     <button class="btn-reset" onclick="resetCoefficients()">デフォルトに戻す</button>
+
+                    <div class="custom-items-container">
+                        <p style="font-size: 0.78rem; color: #7b61ff; margin-bottom: 8px;">✨ カスタム項目</p>
+                        <div id="custom-items-list"></div>
+                        <button class="btn-add-item" onclick="addCustomItem()">+ 資産項目を追加</button>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3>🔍 銘柄コード追加</h3>
+                    <p style="font-size: 0.78rem; color: #556677; margin-bottom: 10px;">
+                        証券コードを指定して比較対象に追加
+                    </p>
+                    <div class="code-add-row">
+                        <input type="text" id="code-add-input" class="code-add-input" placeholder="例: 7203" maxlength="4">
+                        <button class="btn-add-code" onclick="addPinnedCode()">追加</button>
+                    </div>
+                    <div class="pinned-codes" id="pinned-codes"></div>
                 </div>
 
                 <div class="panel">
@@ -785,6 +966,9 @@
         let currentSort = { key: 'netNetRatio', order: 'desc' };
         let searchTerm = '';
         let filterMode = 'all';
+        let customItems = []; // { id, name, coeff }
+        let pinnedCodes = []; // ['7203', '9432', ...]
+        let nextCustomId = 1;
 
         // Coefficients
         let coefficients = {
@@ -852,8 +1036,89 @@
                 document.getElementById('coeff-' + key).value = val;
                 document.getElementById('coeff-' + key + '-val').textContent = val.toFixed(2);
             });
+            // Clear custom items
+            customItems = [];
+            document.getElementById('custom-items-list').innerHTML = '';
             recalculate();
         }
+
+        // Custom item add/remove
+        function addCustomItem() {
+            const id = nextCustomId++;
+            customItems.push({ id, name: '資産項目' + id, coeff: 0.50 });
+            renderCustomItems();
+        }
+
+        function removeCustomItem(id) {
+            customItems = customItems.filter(item => item.id !== id);
+            renderCustomItems();
+            recalculate();
+        }
+
+        function renderCustomItems() {
+            const container = document.getElementById('custom-items-list');
+            container.innerHTML = customItems.map(item => `
+                <div class="custom-item" data-id="${item.id}">
+                    <input type="text" value="${item.name}" 
+                        onchange="updateCustomItemName(${item.id}, this.value)" title="項目名">
+                    <input type="range" min="0" max="1" step="0.05" value="${item.coeff}"
+                        oninput="updateCustomItemCoeff(${item.id}, this.value, this.parentElement)">
+                    <span class="coeff-value">${item.coeff.toFixed(2)}</span>
+                    <button class="btn-remove-item" onclick="removeCustomItem(${item.id})" title="削除">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function updateCustomItemName(id, name) {
+            const item = customItems.find(i => i.id === id);
+            if (item) item.name = name;
+        }
+
+        function updateCustomItemCoeff(id, value, el) {
+            const item = customItems.find(i => i.id === id);
+            if (item) {
+                item.coeff = parseFloat(value);
+                el.querySelector('.coeff-value').textContent = parseFloat(value).toFixed(2);
+            }
+        }
+
+        // Pinned code management
+        function addPinnedCode() {
+            const input = document.getElementById('code-add-input');
+            const code = input.value.trim();
+            if (code.length === 4 && /^\d{4}$/.test(code) && !pinnedCodes.includes(code)) {
+                pinnedCodes.push(code);
+                input.value = '';
+                renderPinnedCodes();
+                renderTable(); // Re-render to highlight pinned codes
+            }
+        }
+
+        function removePinnedCode(code) {
+            pinnedCodes = pinnedCodes.filter(c => c !== code);
+            renderPinnedCodes();
+            renderTable();
+        }
+
+        function renderPinnedCodes() {
+            const container = document.getElementById('pinned-codes');
+            container.innerHTML = pinnedCodes.map(code => `
+                <span class="pinned-code-tag">
+                    ${code}
+                    <button onclick="removePinnedCode('${code}')" title="削除">✕</button>
+                </span>
+            `).join('');
+        }
+
+        // Enter key support for code input
+        document.addEventListener('DOMContentLoaded', () => {
+            const codeInput = document.getElementById('code-add-input');
+            if (codeInput) {
+                codeInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') addPinnedCode();
+                });
+            }
+        });
 
         async function loadData() {
             try {
@@ -896,17 +1161,24 @@
                     const netNetRatio = marketCap > 0 ? ncav / marketCap : 0;
 
                     // Special PBR (coefficient-adjusted)
-                    // 固定資産 = 総資産 - 流動資産
-                    // 流動資産(現金除く) = 流動資産 - 現金
                     const cashPart = (stock.CashAndDeposits || 0);
                     const currentOther = stock.CurrentAssets - cashPart;
                     const fixedAssets = stock.TotalAssets - stock.CurrentAssets;
-                    const adjAssets = (cashPart * coefficients.cash) +
+                    let adjAssets = (cashPart * coefficients.cash) +
                         (currentOther * coefficients.current) +
                         (Math.max(0, fixedAssets) * coefficients.fixed);
+                    
+                    // Add custom items contribution (treated as additional asset adjustments)
+                    customItems.forEach(item => {
+                        adjAssets += Math.max(0, fixedAssets) * item.coeff * 0.1;
+                    });
+                    
                     const adjLiab = stock.Liabilities * coefficients.liab;
                     const adjNetAsset = adjAssets - adjLiab;
                     const specialPBR = adjNetAsset > 0 ? marketCap / adjNetAsset : null;
+
+                    // Check if pinned
+                    const isPinned = pinnedCodes.includes(stock.Code);
 
                     return {
                         ...stock,
@@ -915,6 +1187,7 @@
                         netNetRatio,
                         marketCapCalc: marketCap,
                         specialPBR,
+                        isPinned,
                     };
                 });
 
@@ -943,6 +1216,9 @@
 
         function getFilteredAndSorted() {
             let filtered = processedStocks.filter(s => {
+                // Pinned codes are always shown
+                if (s.isPinned) return true;
+
                 // Search
                 if (searchTerm) {
                     if (!s.Code.toLowerCase().includes(searchTerm) &&
@@ -1058,6 +1334,7 @@
                 // Net-net badge
                 let badge = '';
                 if (s.netNetRatio > 1.0) badge = '<span class="badge badge-netnet">NET-NET</span>';
+                if (s.isPinned) badge += '<span class="badge" style="background:rgba(0,217,255,0.15);color:#00d9ff;border:1px solid rgba(0,217,255,0.3);margin-left:4px;">📌</span>';
 
                 return `<tr>
                     <td class="rank-cell ${rankClass}">${rank}</td>
