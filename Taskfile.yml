@@ -57,3 +57,59 @@ tasks:
     cmds:
       - rm -f data/stock_data.db data/stock_data.db.gz
       - echo "🧹 Cleaned database files"
+
+  # バルクロード: 過去1年分のEDINETデータを一括取得
+  # 使い方: task bulk-load FROM=2025-04-01 TO=2026-03-30
+  bulk-load:
+    desc: "過去データの一括取得（EDINET_API_KEY環境変数が必要）"
+    cmds:
+      - echo "🚀 バルクロード開始 ({{.FROM}} 〜 {{.TO}})"
+      - go run main.go -mode=batch -from={{.FROM}} -to={{.TO}}
+      - echo ""
+      - echo "📈 株価データ取得中..."
+      - go run main.go -mode=fetch-prices
+      - echo ""
+      - echo "📊 RS計算中..."
+      - go run main.go -mode=calc-rs
+      - echo ""
+      - echo "📦 DB圧縮中..."
+      - task compress
+      - echo ""
+      - echo "✅ バルクロード完了!"
+      - echo "📋 次のステップ: task upload-db でGitHub Releasesにアップロード"
+    vars:
+      FROM: '{{.FROM | default "2025-04-01"}}'
+      TO: '{{.TO | default "2026-03-30"}}'
+
+  # DBをGitHub Releasesにアップロード
+  # gh CLI が必要: brew install gh
+  upload-db:
+    desc: "圧縮済みDBをGitHub Releasesにアップロード"
+    cmds:
+      - |
+        DATE=$(date +%Y-%m-%d)
+        TAG="data-local-${DATE}"
+        echo "📤 Uploading databases to GitHub Release: ${TAG}"
+        
+        # DB統計
+        echo ""
+        echo "📊 アップロードするDB統計:"
+        if [ -f data/xbrl.db ]; then
+          sqlite3 data/xbrl.db "SELECT '  銘柄数: ' || COUNT(*) FROM stocks;"
+          sqlite3 data/xbrl.db "SELECT '  売上あり: ' || COUNT(*) FROM stocks WHERE net_sales > 0;"
+        fi
+        if [ -f data/stock_price.db ]; then
+          sqlite3 data/stock_price.db "SELECT '  株価銘柄: ' || COUNT(DISTINCT code) FROM stock_prices;"
+        fi
+        
+        echo ""
+        
+        # リリース作成 & アップロード
+        gh release create "${TAG}" \
+          --title "Local Bulk Load - ${DATE}" \
+          --notes "ローカルバッチ実行によるデータアップロード" \
+          data/xbrl.db.gz data/stock_price.db.gz data/rs.db.gz \
+          --latest
+        
+        echo "✅ アップロード完了: ${TAG}"
+

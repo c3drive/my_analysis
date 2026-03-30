@@ -631,14 +631,36 @@
             border-radius: 8px;
         }
 
-        .custom-item input[type="text"] {
-            width: 80px;
-            background: rgba(0,0,0,0.3);
-            border: 1px solid rgba(255,255,255,0.1);
+        .custom-item select {
+            width: 110px;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(123,97,255,0.25);
             border-radius: 4px;
             padding: 4px 6px;
             color: #e0e0e0;
-            font-size: 0.78rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+
+        .custom-item select option {
+            background: #1a1a2e;
+        }
+
+        .custom-item .item-type-toggle {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: transparent;
+            cursor: pointer;
+            color: #00ff88;
+            flex-shrink: 0;
+            transition: all 0.2s;
+        }
+
+        .custom-item .item-type-toggle.subtract {
+            color: #ff6b6b;
+            border-color: rgba(255,107,107,0.3);
         }
 
         .custom-item input[type="range"] {
@@ -1042,10 +1064,32 @@
             recalculate();
         }
 
+        // Available data sources for custom items
+        const dataSources = [
+            { key: 'CashAndDeposits', label: '💴 現金・預金' },
+            { key: 'CurrentAssets', label: '📄 流動資産' },
+            { key: 'FixedAssets', label: '🏢 固定資産', computed: true },
+            { key: 'TotalAssets', label: '📊 総資産' },
+            { key: 'NetAssets', label: '💰 純資産' },
+            { key: 'InvestmentSecurities', label: '📈 投資有価証券' },
+            { key: 'Securities', label: '📑 有価証券' },
+            { key: 'AccountsReceivable', label: '📝 売掛金' },
+            { key: 'Inventories', label: '📦 棚卸資産' },
+            { key: 'Liabilities', label: '⚠️ 負債合計' },
+            { key: 'CurrentLiabilities', label: '📋 流動負債' },
+            { key: 'NonCurrentLiabilities', label: '🔒 固定負債', computed: true },
+        ];
+
+        function getStockFieldValue(stock, key) {
+            if (key === 'FixedAssets') return Math.max(0, (stock.TotalAssets || 0) - (stock.CurrentAssets || 0));
+            if (key === 'NonCurrentLiabilities') return Math.max(0, (stock.Liabilities || 0) - (stock.CurrentLiabilities || 0));
+            return stock[key] || 0;
+        }
+
         // Custom item add/remove
         function addCustomItem() {
             const id = nextCustomId++;
-            customItems.push({ id, name: '資産項目' + id, coeff: 0.50 });
+            customItems.push({ id, source: 'CashAndDeposits', coeff: 0.50, isAdd: true });
             renderCustomItems();
         }
 
@@ -1057,21 +1101,39 @@
 
         function renderCustomItems() {
             const container = document.getElementById('custom-items-list');
-            container.innerHTML = customItems.map(item => `
+            container.innerHTML = customItems.map(item => {
+                const options = dataSources.map(ds => 
+                    `<option value="${ds.key}" ${item.source === ds.key ? 'selected' : ''}>${ds.label}</option>`
+                ).join('');
+                const toggleClass = item.isAdd ? '' : 'subtract';
+                const toggleLabel = item.isAdd ? '+' : '−';
+                return `
                 <div class="custom-item" data-id="${item.id}">
-                    <input type="text" value="${item.name}" 
-                        onchange="updateCustomItemName(${item.id}, this.value)" title="項目名">
+                    <button class="item-type-toggle ${toggleClass}" 
+                        onclick="toggleCustomItemType(${item.id})" title="加算/減算切替">${toggleLabel}</button>
+                    <select onchange="updateCustomItemSource(${item.id}, this.value)">
+                        ${options}
+                    </select>
                     <input type="range" min="0" max="1" step="0.05" value="${item.coeff}"
                         oninput="updateCustomItemCoeff(${item.id}, this.value, this.parentElement)">
                     <span class="coeff-value">${item.coeff.toFixed(2)}</span>
                     <button class="btn-remove-item" onclick="removeCustomItem(${item.id})" title="削除">✕</button>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
-        function updateCustomItemName(id, name) {
+        function updateCustomItemSource(id, source) {
             const item = customItems.find(i => i.id === id);
-            if (item) item.name = name;
+            if (item) item.source = source;
+        }
+
+        function toggleCustomItemType(id) {
+            const item = customItems.find(i => i.id === id);
+            if (item) {
+                item.isAdd = !item.isAdd;
+                renderCustomItems();
+            }
         }
 
         function updateCustomItemCoeff(id, value, el) {
@@ -1168,9 +1230,15 @@
                         (currentOther * coefficients.current) +
                         (Math.max(0, fixedAssets) * coefficients.fixed);
                     
-                    // Add custom items contribution (treated as additional asset adjustments)
+                    // Add custom items contribution (using actual data fields)
                     customItems.forEach(item => {
-                        adjAssets += Math.max(0, fixedAssets) * item.coeff * 0.1;
+                        const fieldValue = getStockFieldValue(stock, item.source);
+                        const contribution = Math.max(0, fieldValue) * item.coeff;
+                        if (item.isAdd) {
+                            adjAssets += contribution;
+                        } else {
+                            adjAssets -= contribution;
+                        }
                     });
                     
                     const adjLiab = stock.Liabilities * coefficients.liab;

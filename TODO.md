@@ -2,7 +2,7 @@
 
 **参考**: [kawasin73さんの記事](https://kawasin73.hatenablog.com/entry/2025/11/20/224346)
 
-**最終更新**: 2026-03-15
+**最終更新**: 2026-03-30
 
 ---
 
@@ -131,16 +131,16 @@
 #### 資産項目（ネットネット計算用）
 - [x] `cash_and_deposits` - 現金及び預金（main.go実装済み）
 - [ ] `deposits` - 預金
-- [ ] `investment_securities` - 投資有価証券
-- [ ] `accounts_receivable` - 売掛金
-- [ ] `marketable_securities` - 有価証券
+- [x] `investment_securities` - 投資有価証券 ✅ XBRLパース・DB・UI対応
+- [x] `accounts_receivable` - 売掛金 ✅ XBRLパース・DB・UI対応
+- [x] `marketable_securities` - 有価証券 ✅ `securities`として実装
 - [ ] `notes_receivable` - 受取手形
-- [ ] `inventories` - 棚卸資産
+- [x] `inventories` - 棚卸資産 ✅ XBRLパース・DB・UI対応
 
 #### 負債項目
 - [x] `liabilities` - 負債合計（main.go実装済み）
 - [x] `current_liabilities` - 流動負債（main.go実装済み）
-- [ ] `non_current_liabilities` - 固定負債
+- [ ] `non_current_liabilities` - 固定負債（UIでは計算フィールドとして対応済み）
 
 #### 利益・資本項目
 - [x] `net_income` - 純利益（main.go実装済み）
@@ -332,20 +332,20 @@
 
 ---
 
-## 🟠 コードレビュー指摘事項（2026-03-23）
+## 🟠 コードレビュー指摘事項（2026-03-23） ✅ 全完了
 
-### 26. gen_json.go: stocks.jsonにRS値・投資指標が未含有
-- [ ] `deploy-pages.yml`内の`gen_json.go`でrs.dbをATTACHし、RSランクをstocks.jsonに含める
-- [ ] EquityRatio, PER, PBR等の投資指標もstocks.jsonに含める（GitHub Pagesでオニールスクリーニングが動くように）
-- 現状: GitHub Pages版はRS無しで動作、Go APIサーバー経由時のみRS・指標が取得可能
+### 26. gen_json.go: stocks.jsonにRS値・投資指標が未含有 ✅ 完了
+- [x] `deploy-pages.yml`内の`gen_json.go`でrs.dbをATTACHし、RSランクをstocks.jsonに含める
+- [x] EquityRatio, PER, PBR等の投資指標もstocks.jsonに含める（GitHub Pagesでオニールスクリーニングが動くように）
+- ~~現状: GitHub Pages版はRS無しで動作~~ → MarketCap, PER, PBR, EPS, ROE, EquityRatio, NetNetRatio, RS を出力
 
-### 27. /api/prices/ のDB接続方式
-- [ ] `/api/prices/`ハンドラが`sql.Open`で毎回直接stock_price.dbを開いている
-- [ ] `openServerDB()`のATTACH DB方式に統一して`price_db.stock_prices`でクエリ
+### 27. /api/prices/ のDB接続方式 ✅ 完了
+- [x] `/api/prices/`, `/api/market-index/`, `/api/available-codes` が`sql.Open`で毎回直接stock_price.dbを開いていた
+- [x] `openServerDB()`のATTACH DB方式に統一して`price_db.stock_prices`でクエリ
 
-### 28. net-net-value.html: カスタム項目のロジック改善
-- [ ] カスタム資産項目の計算が`fixedAssets * coeff * 0.1`で固定的
-- [ ] ユーザーが「有価証券」「投資有価証券」等の独自カテゴリを実際に評価可能な計算に改善
+### 28. net-net-value.html: カスタム項目のロジック改善 ✅ 完了
+- [x] カスタム資産項目の計算が`fixedAssets * coeff * 0.1`で固定的だった
+- [x] DBカラム（現金、流動資産、固定資産、総資産、純資産、負債、流動負債）から選択 + 係数 + 加算/減算切替の方式に改善
 
 ---
 
@@ -465,19 +465,19 @@
 
 ### 📋 改善タスク（優先度順）
 
-#### P0: 初回バルクロード（即効性あり・最重要）
-- [ ] **daily-update.yml にバルクロードモードを追加**
-  - 手動実行時に `days_back` を 365 に設定可能にする（既に可能だが、CI実行時間制限あり）
-  - 初回セットアップ用の別ワークフロー `bulk-load.yml` を作成
-  - 期間: 過去1年（365日）を分割実行（例: 30日×12回 or 90日×4回）
-  - EDINET APIのレートリミット対策（1秒スリープは実装済み）
-- [ ] **GitHub Actions の実行時間制限対策**
-  - 無料枠: 月2,000分 → 1年分のデータを一括で取得すると超過の可能性
-  - 分割実行（月ごとに実行）か、ローカルでバッチ実行してDBをアップロード
-- [ ] **ローカルバッチ実行 → DBアップロード手順の整備**
-  - ローカルで `-mode=batch -from=2025-04-01 -to=2026-03-08` を実行
-  - 完成したDBを `gh release upload` でアップロード
-  - その後は日次更新で差分追加
+#### P0: 初回バルクロード（即効性あり・最重要） ✅ 完了
+- [x] **daily-update.yml にバルクロードモードを追加**
+  - `bulk-load.yml` ワークフローを新規作成（手動実行、日付範囲・チャンクサイズ指定可能）
+  - 期間を分割実行（デフォルト30日×N回）
+  - EDINET APIのレートリミット対策（チャンク間5秒休憩 + 各日1秒スリープ）
+- [x] **GitHub Actions の実行時間制限対策**
+  - `timeout-minutes: 300`（5時間）設定
+  - チャンク分割でAPIレートリミットを回避
+  - 完了後に自動で株価取得・RS計算・リリース作成
+- [x] **ローカルバッチ実行 → DBアップロード手順の整備**
+  - Taskfileに `task bulk-load FROM=2025-04-01 TO=2026-03-30` タスク追加
+  - `task upload-db` でGitHub Releasesにアップロード
+  - バッチ→株価取得→RS計算→圧縮→アップロードの一連の流れを自動化
 
 #### P1: saveStock の空データ上書き防止 ✅ 完了
 - [x] **saveStock で空データ保存をスキップするガード追加**
@@ -538,7 +538,7 @@
 6. ~~**オニールランキング実装** → スコア計算・テーブル~~ ✅ 基本実装済み
 7. ~~**銘柄詳細ページ** → チャート・主要指標~~ ✅ 完了
 8. ~~**市場天井検出** → パラメータUI・チャート~~ ✅ v1完了
-9. **🚨 銘柄数問題修正（P0: バルクロード）** → ローカルバッチ実行 or バルクロードWF
+9. ~~**🚨 銘柄数問題修正（P0: バルクロード）** → bulk-load.yml + Taskfile~~ ✅ 完了
 10. ~~**🚨 saveStock の空データ上書き防止（P1）** → UPSERT + COALESCE~~ ✅ 完了
 11. ~~**🚨 XBRLパース成功率向上（P2）** → タグパターン拡充~~ ✅ 完了
 12. ~~**日次更新改善（P3）** → days_back=30~~ ✅ 完了 + 品質レポート

@@ -1,0 +1,278 @@
+name: Bulk Load Historical Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_date:
+        description: '開始日 (YYYY-MM-DD)'
+        required: true
+        default: '2025-04-01'
+      to_date:
+        description: '終了日 (YYYY-MM-DD)'
+        required: true
+        default: '2026-03-30'
+      chunk_days:
+        description: '1回あたりの処理日数（EDINET APIレートリミット対策）'
+        required: false
+        default: '30'
+      skip_prices:
+        description: '株価取得をスキップするか'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  bulk-load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300  # 5時間タイムアウト
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install dependencies
+        run: |
+          go mod download
+          mkdir -p data
+
+      - name: Download existing DBs from latest release
+        continue-on-error: true
+        run: |
+          LATEST_TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.tag_name')
+          
+          if [ "$LATEST_TAG" != "null" ] && [ "$LATEST_TAG" != "" ]; then
+            echo "📥 Restoring DBs from release: $LATEST_TAG"
+            
+            for DB_NAME in xbrl.db stock_price.db rs.db; do
+              curl -L -o "data/${DB_NAME}.gz" \
+                "https://github.com/${{ github.repository }}/releases/download/$LATEST_TAG/${DB_NAME}.gz" \
+                2>/dev/null || echo "  ⚠️ $DB_NAME not found"
+              
+              if [ -f "data/${DB_NAME}.gz" ]; then
+                gunzip "data/${DB_NAME}.gz"
+                echo "  ✅ $DB_NAME restored"
+              fi
+            done
+            
+            # レガシーDB対応
+            if [ ! -f data/xbrl.db ]; then
+              curl -L -o data/stock_data.db.gz \
+                "https://github.com/${{ github.repository }}/releases/download/$LATEST_TAG/stock_data.db.gz" \
+                2>/dev/null || true
+              if [ -f data/stock_data.db.gz ]; then
+                gunzip data/stock_data.db.gz
+                echo "  ✅ Legacy DB restored"
+              fi
+            fi
+            
+            echo "📊 Pre-bulk-load stats:"
+            if [ -f data/xbrl.db ]; then
+              sqlite3 data/xbrl.db "SELECT '  Total stocks: ' || COUNT(*) FROM stocks;" 2>/dev/null || true
+              sqlite3 data/xbrl.db "SELECT '  With sales: ' || COUNT(*) FROM stocks WHERE net_sales > 0;" 2>/dev/null || true
+            fi
+          else
+            echo "ℹ️ No previous release found, starting fresh"
+          fi
+
+      - name: Bulk load EDINET data (chunked)
+        id: bulk-load
+        run: |
+          FROM_DATE="${{ github.event.inputs.from_date }}"
+          TO_DATE="${{ github.event.inputs.to_date }}"
+          CHUNK_DAYS="${{ github.event.inputs.chunk_days }}"
+          
+          echo "🚀 バルクロード開始"
+          echo "  期間: $FROM_DATE 〜 $TO_DATE"
+          echo "  チャンクサイズ: $CHUNK_DAYS 日"
+          echo ""
+          
+          TOTAL_PROCESSED=0
+          TOTAL_ERRORS=0
+          CHUNK_NUM=0
+          
+          # 日付をチャンクに分割して処理
+          CURRENT_FROM="$FROM_DATE"
+          while [ "$CURRENT_FROM" \< "$TO_DATE" ] || [ "$CURRENT_FROM" = "$TO_DATE" ]; do
+            CHUNK_NUM=$((CHUNK_NUM + 1))
+            
+            # チャンクの終了日を計算
+            CURRENT_TO=$(date -u -d "$CURRENT_FROM + $((CHUNK_DAYS - 1)) days" +%Y-%m-%d 2>/dev/null || \
+                         date -u -j -f "%Y-%m-%d" "$CURRENT_FROM" -v+$((CHUNK_DAYS - 1))d +%Y-%m-%d)
+            
+            # TO_DATEを超えないようにクリップ
+            if [ "$CURRENT_TO" \> "$TO_DATE" ]; then
+              CURRENT_TO="$TO_DATE"
+            fi
+            
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "📦 チャンク $CHUNK_NUM: $CURRENT_FROM 〜 $CURRENT_TO"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            OUTPUT=$(go run main.go -mode=batch -from="$CURRENT_FROM" -to="$CURRENT_TO" 2>&1) || true
+            echo "$OUTPUT"
+            
+            # 処理結果を集計
+            PROCESSED=$(echo "$OUTPUT" | grep -oP '処理日数=\K[0-9]+' || echo "0")
+            TOTAL_PROCESSED=$((TOTAL_PROCESSED + PROCESSED))
+            
+            # 次のチャンクの開始日
+            CURRENT_FROM=$(date -u -d "$CURRENT_TO + 1 day" +%Y-%m-%d 2>/dev/null || \
+                           date -u -j -f "%Y-%m-%d" "$CURRENT_TO" -v+1d +%Y-%m-%d)
+            
+            # チャンク間の休憩（APIレートリミット対策）
+            echo "  ⏸️ チャンク間の休憩 (5秒)..."
+            sleep 5
+          done
+          
+          echo ""
+          echo "🔥 ==============================="
+          echo "  バルクロード完了!"
+          echo "  チャンク数: $CHUNK_NUM"
+          echo "  合計処理日数: $TOTAL_PROCESSED"
+          echo "==============================="
+          
+          echo "total_chunks=$CHUNK_NUM" >> $GITHUB_OUTPUT
+          echo "total_processed=$TOTAL_PROCESSED" >> $GITHUB_OUTPUT
+        env:
+          EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
+
+      - name: Fetch stock prices
+        if: ${{ github.event.inputs.skip_prices != 'true' }}
+        continue-on-error: true
+        run: |
+          echo "📈 Fetching stock prices for all stocks..."
+          go run main.go -mode=fetch-prices 2>&1 || echo "⚠️ Price fetch had issues"
+
+      - name: Calculate Relative Strength
+        continue-on-error: true
+        run: |
+          echo "📊 Calculating RS scores..."
+          go run main.go -mode=calc-rs 2>&1 || echo "⚠️ RS calculation had issues"
+
+      - name: Post-load statistics
+        id: post-stats
+        run: |
+          echo "📊 === バルクロード後の統計 ==="
+          TOTAL_STOCKS="0"; WITH_SALES="0"; WITH_INCOME="0"; WITH_ASSETS="0"; PRICE_STOCKS="0"; RS_STOCKS="0"
+          
+          if [ -f data/xbrl.db ]; then
+            TOTAL_STOCKS=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks;" 2>/dev/null || echo "0")
+            WITH_SALES=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE net_sales > 0;" 2>/dev/null || echo "0")
+            WITH_INCOME=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE net_income > 0;" 2>/dev/null || echo "0")
+            WITH_ASSETS=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE total_assets > 0;" 2>/dev/null || echo "0")
+            EARLIEST=$(sqlite3 data/xbrl.db "SELECT MIN(updated_at) FROM stocks WHERE updated_at != '';" 2>/dev/null || echo "N/A")
+            LATEST=$(sqlite3 data/xbrl.db "SELECT MAX(updated_at) FROM stocks WHERE updated_at != '';" 2>/dev/null || echo "N/A")
+            echo "  📋 銘柄数: $TOTAL_STOCKS"
+            echo "  💰 売上あり: $WITH_SALES ($(echo "scale=1; $WITH_SALES * 100 / $TOTAL_STOCKS" | bc 2>/dev/null || echo '?')%)"
+            echo "  📈 純利益あり: $WITH_INCOME"
+            echo "  🏦 総資産あり: $WITH_ASSETS"
+            echo "  📅 データ期間: $EARLIEST 〜 $LATEST"
+          fi
+          
+          if [ -f data/stock_price.db ]; then
+            PRICE_STOCKS=$(sqlite3 data/stock_price.db "SELECT COUNT(DISTINCT code) FROM stock_prices;" 2>/dev/null || echo "0")
+            PRICE_RECORDS=$(sqlite3 data/stock_price.db "SELECT COUNT(*) FROM stock_prices;" 2>/dev/null || echo "0")
+            echo "  📉 株価銘柄: $PRICE_STOCKS ($PRICE_RECORDS レコード)"
+          fi
+          
+          if [ -f data/rs.db ]; then
+            RS_STOCKS=$(sqlite3 data/rs.db "SELECT COUNT(DISTINCT code) FROM rs_scores;" 2>/dev/null || echo "0")
+            echo "  📊 RS計算済: $RS_STOCKS"
+          fi
+          
+          # DB sizes
+          echo "  📦 DBサイズ:"
+          for DB_NAME in xbrl.db stock_price.db rs.db; do
+            if [ -f "data/$DB_NAME" ]; then
+              SIZE=$(du -h "data/$DB_NAME" | cut -f1)
+              echo "    $DB_NAME: $SIZE"
+            fi
+          done
+          
+          echo "total_stocks=$TOTAL_STOCKS" >> $GITHUB_OUTPUT
+          echo "with_sales=$WITH_SALES" >> $GITHUB_OUTPUT
+          echo "with_income=$WITH_INCOME" >> $GITHUB_OUTPUT
+          echo "price_stocks=$PRICE_STOCKS" >> $GITHUB_OUTPUT
+          echo "rs_stocks=$RS_STOCKS" >> $GITHUB_OUTPUT
+
+      - name: Compress databases
+        run: |
+          for DB_NAME in xbrl.db stock_price.db rs.db; do
+            if [ -f "data/$DB_NAME" ]; then
+              gzip -c "data/$DB_NAME" > "data/${DB_NAME}.gz"
+              ORIG_SIZE=$(du -h "data/$DB_NAME" | cut -f1)
+              COMP_SIZE=$(du -h "data/${DB_NAME}.gz" | cut -f1)
+              echo "📦 $DB_NAME: $ORIG_SIZE → $COMP_SIZE"
+            fi
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: data-bulk-${{ github.event.inputs.from_date }}-to-${{ github.event.inputs.to_date }}
+          name: "Bulk Load: ${{ github.event.inputs.from_date }} 〜 ${{ github.event.inputs.to_date }}"
+          body: |
+            🚀 バルクロード完了
+
+            📅 期間: ${{ github.event.inputs.from_date }} 〜 ${{ github.event.inputs.to_date }}
+            📦 チャンク: ${{ steps.bulk-load.outputs.total_chunks }} (各 ${{ github.event.inputs.chunk_days }} 日)
+            
+            ## 📊 データ統計
+            | 指標 | 値 |
+            |------|------|
+            | 総銘柄数 | ${{ steps.post-stats.outputs.total_stocks }} |
+            | 売上データあり | ${{ steps.post-stats.outputs.with_sales }} |
+            | 純利益データあり | ${{ steps.post-stats.outputs.with_income }} |
+            | 株価データあり | ${{ steps.post-stats.outputs.price_stocks }} |
+            | RS計算済 | ${{ steps.post-stats.outputs.rs_stocks }} |
+            
+            **Files:**
+            - `xbrl.db.gz` - 財務データ（EDINET XBRL, バルクロード済）
+            - `stock_price.db.gz` - 株価データ（Stooq）
+            - `rs.db.gz` - リラティブストレングス
+          files: |
+            data/xbrl.db.gz
+            data/stock_price.db.gz
+            data/rs.db.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update latest tag
+        continue-on-error: true
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag -f latest
+          git push origin latest --force
+
+      - name: Write Job Summary
+        run: |
+          cat << 'SUMMARY' >> $GITHUB_STEP_SUMMARY
+          ## 🚀 Bulk Load Summary
+          
+          | 指標 | 値 |
+          |------|------|
+          SUMMARY
+          echo "| 期間 | ${{ github.event.inputs.from_date }} 〜 ${{ github.event.inputs.to_date }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| チャンクサイズ | ${{ github.event.inputs.chunk_days }} 日 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 処理チャンク数 | ${{ steps.bulk-load.outputs.total_chunks }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 合計処理日数 | ${{ steps.bulk-load.outputs.total_processed }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 総銘柄数 | ${{ steps.post-stats.outputs.total_stocks }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 売上データあり | ${{ steps.post-stats.outputs.with_sales }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 株価データあり | ${{ steps.post-stats.outputs.price_stocks }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| RS計算済 | ${{ steps.post-stats.outputs.rs_stocks }} |" >> $GITHUB_STEP_SUMMARY

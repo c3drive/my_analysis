@@ -53,22 +53,30 @@ type Stock struct {
 	Liabilities        int64 `json:"Liabilities"`        // 負債合計
 	CurrentLiabilities int64 `json:"CurrentLiabilities"` // 流動負債
 	// その他
-	CashAndDeposits int64 `json:"CashAndDeposits"` // 現金及び預金
-	SharesIssued    int64 `json:"SharesIssued"`    // 発行済株式数
+	CashAndDeposits      int64 `json:"CashAndDeposits"`      // 現金及び預金
+	SharesIssued         int64 `json:"SharesIssued"`         // 発行済株式数
+	InvestmentSecurities int64 `json:"InvestmentSecurities"` // 投資有価証券
+	Securities           int64 `json:"Securities"`           // 有価証券（短期）
+	AccountsReceivable   int64 `json:"AccountsReceivable"`   // 売掛金
+	Inventories          int64 `json:"Inventories"`          // 棚卸資産
 }
 
 // FinancialData はXBRLから抽出した財務データ
 type FinancialData struct {
-	NetSales           int64
-	OperatingIncome    int64
-	NetIncome          int64
-	TotalAssets        int64
-	NetAssets          int64
-	CurrentAssets      int64
-	Liabilities        int64
-	CurrentLiabilities int64
-	CashAndDeposits    int64
-	SharesIssued       int64
+	NetSales             int64
+	OperatingIncome      int64
+	NetIncome            int64
+	TotalAssets          int64
+	NetAssets            int64
+	CurrentAssets        int64
+	Liabilities          int64
+	CurrentLiabilities   int64
+	CashAndDeposits      int64
+	SharesIssued         int64
+	InvestmentSecurities int64
+	Securities           int64
+	AccountsReceivable   int64
+	Inventories          int64
 }
 
 // StockPrice は株価データを保持する構造体
@@ -248,6 +256,7 @@ func runCollector(targetDate string) {
 		"NetSales": 0, "OperatingIncome": 0, "NetIncome": 0,
 		"TotalAssets": 0, "NetAssets": 0, "CurrentAssets": 0,
 		"Liabilities": 0, "CurrentLiabilities": 0, "CashAndDeposits": 0, "SharesIssued": 0,
+		"InvestmentSecurities": 0, "Securities": 0, "AccountsReceivable": 0, "Inventories": 0,
 	}
 	totalParsed := 0
 
@@ -275,36 +284,20 @@ func runCollector(targetDate string) {
 
 		// パース成功率を記録
 		totalParsed++
-		if data.NetSales > 0 {
-			fieldStats["NetSales"]++
-		}
-		if data.OperatingIncome > 0 {
-			fieldStats["OperatingIncome"]++
-		}
-		if data.NetIncome > 0 {
-			fieldStats["NetIncome"]++
-		}
-		if data.TotalAssets > 0 {
-			fieldStats["TotalAssets"]++
-		}
-		if data.NetAssets > 0 {
-			fieldStats["NetAssets"]++
-		}
-		if data.CurrentAssets > 0 {
-			fieldStats["CurrentAssets"]++
-		}
-		if data.Liabilities > 0 {
-			fieldStats["Liabilities"]++
-		}
-		if data.CurrentLiabilities > 0 {
-			fieldStats["CurrentLiabilities"]++
-		}
-		if data.CashAndDeposits > 0 {
-			fieldStats["CashAndDeposits"]++
-		}
-		if data.SharesIssued > 0 {
-			fieldStats["SharesIssued"]++
-		}
+		if data.NetSales > 0 { fieldStats["NetSales"]++ }
+		if data.OperatingIncome > 0 { fieldStats["OperatingIncome"]++ }
+		if data.NetIncome > 0 { fieldStats["NetIncome"]++ }
+		if data.TotalAssets > 0 { fieldStats["TotalAssets"]++ }
+		if data.NetAssets > 0 { fieldStats["NetAssets"]++ }
+		if data.CurrentAssets > 0 { fieldStats["CurrentAssets"]++ }
+		if data.Liabilities > 0 { fieldStats["Liabilities"]++ }
+		if data.CurrentLiabilities > 0 { fieldStats["CurrentLiabilities"]++ }
+		if data.CashAndDeposits > 0 { fieldStats["CashAndDeposits"]++ }
+		if data.SharesIssued > 0 { fieldStats["SharesIssued"]++ }
+		if data.InvestmentSecurities > 0 { fieldStats["InvestmentSecurities"]++ }
+		if data.Securities > 0 { fieldStats["Securities"]++ }
+		if data.AccountsReceivable > 0 { fieldStats["AccountsReceivable"]++ }
+		if data.Inventories > 0 { fieldStats["Inventories"]++ }
 
 		// DBへ保存
 		err = saveStock(db, shortCode, doc.EntityName, doc.SubmissionDate, data)
@@ -320,7 +313,7 @@ func runCollector(targetDate string) {
 	fmt.Printf("\n🔥 完了! 処理=%d件, スキップ=%d件, エラー=%d件, 空データ=%d件\n", processedCount, skippedCount, errorCount, emptyDataCount)
 	if totalParsed > 0 {
 		fmt.Println("📊 パース成功率:")
-		for _, field := range []string{"NetSales", "OperatingIncome", "NetIncome", "TotalAssets", "NetAssets", "CurrentAssets", "Liabilities", "CurrentLiabilities", "CashAndDeposits", "SharesIssued"} {
+		for _, field := range []string{"NetSales", "OperatingIncome", "NetIncome", "TotalAssets", "NetAssets", "CurrentAssets", "Liabilities", "CurrentLiabilities", "CashAndDeposits", "SharesIssued", "InvestmentSecurities", "Securities", "AccountsReceivable", "Inventories"} {
 			rate := float64(fieldStats[field]) / float64(totalParsed) * 100
 			fmt.Printf("  %s: %d/%d (%.1f%%)\n", field, fieldStats[field], totalParsed, rate)
 		}
@@ -334,8 +327,9 @@ func saveStock(db *sql.DB, code, name, updatedAt string, data FinancialData) err
 			code, name, updated_at,
 			net_sales, operating_income, net_income,
 			total_assets, net_assets, current_assets,
-			liabilities, current_liabilities, cash_and_deposits, shares_issued
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			liabilities, current_liabilities, cash_and_deposits, shares_issued,
+			investment_securities, securities, accounts_receivable, inventories
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(code) DO UPDATE SET
 			name = excluded.name,
 			updated_at = CASE WHEN excluded.updated_at != '' THEN excluded.updated_at ELSE stocks.updated_at END,
@@ -348,12 +342,17 @@ func saveStock(db *sql.DB, code, name, updatedAt string, data FinancialData) err
 			liabilities = CASE WHEN excluded.liabilities > 0 THEN excluded.liabilities ELSE stocks.liabilities END,
 			current_liabilities = CASE WHEN excluded.current_liabilities > 0 THEN excluded.current_liabilities ELSE stocks.current_liabilities END,
 			cash_and_deposits = CASE WHEN excluded.cash_and_deposits > 0 THEN excluded.cash_and_deposits ELSE stocks.cash_and_deposits END,
-			shares_issued = CASE WHEN excluded.shares_issued > 0 THEN excluded.shares_issued ELSE stocks.shares_issued END
+			shares_issued = CASE WHEN excluded.shares_issued > 0 THEN excluded.shares_issued ELSE stocks.shares_issued END,
+			investment_securities = CASE WHEN excluded.investment_securities > 0 THEN excluded.investment_securities ELSE stocks.investment_securities END,
+			securities = CASE WHEN excluded.securities > 0 THEN excluded.securities ELSE stocks.securities END,
+			accounts_receivable = CASE WHEN excluded.accounts_receivable > 0 THEN excluded.accounts_receivable ELSE stocks.accounts_receivable END,
+			inventories = CASE WHEN excluded.inventories > 0 THEN excluded.inventories ELSE stocks.inventories END
 	`,
 		code, name, updatedAt,
 		data.NetSales, data.OperatingIncome, data.NetIncome,
 		data.TotalAssets, data.NetAssets, data.CurrentAssets,
 		data.Liabilities, data.CurrentLiabilities, data.CashAndDeposits, data.SharesIssued,
+		data.InvestmentSecurities, data.Securities, data.AccountsReceivable, data.Inventories,
 	)
 	return err
 }
@@ -473,7 +472,7 @@ func startServer() {
 			return
 		}
 
-		db, err := sql.Open("sqlite", "./data/stock_price.db")
+		db, err := openServerDB()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -482,7 +481,7 @@ func startServer() {
 
 		rows, err := db.Query(`
 			SELECT code, date, open, high, low, close, volume 
-			FROM stock_prices 
+			FROM price_db.stock_prices 
 			WHERE code = ? 
 			ORDER BY date DESC
 			LIMIT 365`, code)
@@ -666,7 +665,7 @@ func startServer() {
 			code = "^NKX" // デフォルトは日経225
 		}
 
-		db, err := sql.Open("sqlite", "./data/stock_price.db")
+		db, err := openServerDB()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -676,7 +675,7 @@ func startServer() {
 		// 全期間の株価データを返す（市場天井検出は長期データが必要）
 		rows, err := db.Query(`
 			SELECT code, date, open, high, low, close, volume
-			FROM stock_prices
+			FROM price_db.stock_prices
 			WHERE code = ?
 			ORDER BY date ASC`, code)
 		if err != nil {
@@ -700,7 +699,7 @@ func startServer() {
 	http.HandleFunc("/api/available-codes", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 
-		db, err := sql.Open("sqlite", "./data/stock_price.db")
+		db, err := openServerDB()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -709,7 +708,7 @@ func startServer() {
 
 		rows, err := db.Query(`
 			SELECT code, COUNT(*) as cnt, MIN(date) as from_date, MAX(date) as to_date
-			FROM stock_prices
+			FROM price_db.stock_prices
 			GROUP BY code
 			HAVING cnt >= 30
 			ORDER BY cnt DESC`)
@@ -811,6 +810,10 @@ func initXbrlDB() (*sql.DB, error) {
 		"ALTER TABLE stocks ADD COLUMN current_liabilities INTEGER",
 		"ALTER TABLE stocks ADD COLUMN cash_and_deposits INTEGER",
 		"ALTER TABLE stocks ADD COLUMN shares_issued INTEGER",
+		"ALTER TABLE stocks ADD COLUMN investment_securities INTEGER",
+		"ALTER TABLE stocks ADD COLUMN securities INTEGER",
+		"ALTER TABLE stocks ADD COLUMN accounts_receivable INTEGER",
+		"ALTER TABLE stocks ADD COLUMN inventories INTEGER",
 	}
 	for _, stmt := range alterStatements {
 		db.Exec(stmt)
@@ -1089,6 +1092,29 @@ var xbrlTagPatterns = map[string]*regexp.Regexp{
 	"SharesIssuedFallback": regexp.MustCompile(`<jpcrp_cor:TotalNumberOfIssuedSharesSummaryOfBusinessResults[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
 	// 提出日時点の発行済株式数
 	"SharesIssuedFallback2": regexp.MustCompile(`<jpcrp_cor:NumberOfIssuedSharesAsOfFilingDateEtcTotalNumberOfSharesEtc[^>]*>(\d+)</`),
+
+	// ====== 投資有価証券 ======
+	"InvestmentSecurities": regexp.MustCompile(`<jppfs_cor:InvestmentSecurities[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	"InvestmentSecuritiesFallback": regexp.MustCompile(`<jppfs_cor:InvestmentSecurities[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
+
+	// ====== 有価証券（短期） ======
+	"Securities": regexp.MustCompile(`<jppfs_cor:Securities[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	"SecuritiesFallback": regexp.MustCompile(`<jppfs_cor:Securities[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
+
+	// ====== 売掛金 ======
+	// 受取手形及び売掛金
+	"AccountsReceivable": regexp.MustCompile(`<jppfs_cor:NotesAndAccountsReceivableTrade[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	"AccountsReceivableFallback": regexp.MustCompile(`<jppfs_cor:NotesAndAccountsReceivableTrade[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
+	// 売掛金単独
+	"AccountsReceivableFallback2": regexp.MustCompile(`<jppfs_cor:AccountsReceivableTrade[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	// 売掛金及び契約資産 (IFRS/収益認識基準)
+	"AccountsReceivableFallback3": regexp.MustCompile(`<jppfs_cor:NotesAndAccountsReceivableTradeAndContractAssets[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+
+	// ====== 棚卸資産 ======
+	"Inventories": regexp.MustCompile(`<jppfs_cor:Inventories[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+	"InventoriesFallback": regexp.MustCompile(`<jppfs_cor:Inventories[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
+	// 商品及び製品
+	"InventoriesFallback2": regexp.MustCompile(`<jppfs_cor:MerchandiseAndFinishedGoods[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
 }
 
 // downloadAndParseXBRL はXBRLをダウンロードして財務データを抽出する
@@ -1204,6 +1230,26 @@ func applyXBRLValue(data *FinancialData, found map[string]bool, baseName string,
 		if !found["SharesIssued"] {
 			data.SharesIssued = value
 			found["SharesIssued"] = true
+		}
+	case "InvestmentSecurities":
+		if !found["InvestmentSecurities"] {
+			data.InvestmentSecurities = value
+			found["InvestmentSecurities"] = true
+		}
+	case "Securities":
+		if !found["Securities"] {
+			data.Securities = value
+			found["Securities"] = true
+		}
+	case "AccountsReceivable":
+		if !found["AccountsReceivable"] {
+			data.AccountsReceivable = value
+			found["AccountsReceivable"] = true
+		}
+	case "Inventories":
+		if !found["Inventories"] {
+			data.Inventories = value
+			found["Inventories"] = true
 		}
 	}
 }
