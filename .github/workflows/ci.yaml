@@ -25,6 +25,6 @@ jobs:
         run: |
           mkdir -p data
           # APIキーがない状態で run モードを実行し、モックが正しく動くか検証
-          go run main.go -mode=run -date=2025-11-13
+          go run . -mode=run -date=2025-11-13
         env:
           EDINET_API_KEY: "" # あえて空にする

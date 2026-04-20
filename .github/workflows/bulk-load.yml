@@ -121,7 +121,7 @@ jobs:
             echo "📦 チャンク $CHUNK_NUM: $CURRENT_FROM 〜 $CURRENT_TO"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             
-            OUTPUT=$(go run main.go -mode=batch -from="$CURRENT_FROM" -to="$CURRENT_TO" 2>&1) || true
+            OUTPUT=$(go run . -mode=batch -from="$CURRENT_FROM" -to="$CURRENT_TO" 2>&1) || true
             echo "$OUTPUT"
             
             # 処理結果を集計
@@ -154,13 +154,13 @@ jobs:
         continue-on-error: true
         run: |
           echo "📈 Fetching stock prices for all stocks..."
-          go run main.go -mode=fetch-prices 2>&1 || echo "⚠️ Price fetch had issues"
+          go run . -mode=fetch-prices 2>&1 || echo "⚠️ Price fetch had issues"
 
       - name: Calculate Relative Strength
         continue-on-error: true
         run: |
           echo "📊 Calculating RS scores..."
-          go run main.go -mode=calc-rs 2>&1 || echo "⚠️ RS calculation had issues"
+          go run . -mode=calc-rs 2>&1 || echo "⚠️ RS calculation had issues"
 
       - name: Post-load statistics
         id: post-stats

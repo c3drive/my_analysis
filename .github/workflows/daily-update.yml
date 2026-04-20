@@ -95,7 +95,7 @@ jobs:
             echo "📅 Processing: $TARGET_DATE"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             
-            OUTPUT=$(go run main.go -mode=run -date=$TARGET_DATE 2>&1) || true
+            OUTPUT=$(go run . -mode=run -date=$TARGET_DATE 2>&1) || true
             echo "$OUTPUT"
             
             PROCESSED=$(echo "$OUTPUT" | grep -oP '処理=\K[0-9]+' || echo "0")
@@ -127,7 +127,7 @@ jobs:
         continue-on-error: true
         run: |
           echo "📈 Fetching latest stock prices..."
-          go run main.go -mode=fetch-prices 2>&1 || echo "⚠️ Price fetch had issues"
+          go run . -mode=fetch-prices 2>&1 || echo "⚠️ Price fetch had issues"
         env:
           EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
 
@@ -135,7 +135,7 @@ jobs:
         continue-on-error: true
         run: |
           echo "📊 Calculating RS scores..."
-          go run main.go -mode=calc-rs 2>&1 || echo "⚠️ RS calculation had issues"
+          go run . -mode=calc-rs 2>&1 || echo "⚠️ RS calculation had issues"
 
       - name: Post-update DB statistics
         id: post-stats
