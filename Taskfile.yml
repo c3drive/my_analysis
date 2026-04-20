@@ -19,7 +19,7 @@ tasks:
   # Goの実行
   run:
     cmds:
-      - go run main.go {{.CLI_ARGS}}
+      - go run . {{.CLI_ARGS}}
 
   # データベースの圧縮
   compress:
@@ -30,18 +30,18 @@ tasks:
   # ローカルでのWebサーバー起動
   serve:
     cmds:
-      - go run main.go -mode=serve
+      - go run . -mode=serve
 
   # テストパース実行
   test-parse:
     cmds:
-      - go run main.go -mode=test-parse
+      - go run . -mode=test-parse
 
   # 日次更新シミュレーション
   daily-update:
     cmds:
       - echo "🚀 Starting daily update simulation..."
-      - go run main.go -mode=run -date={{.DATE | default "2025-11-13"}}
+      - go run . -mode=run -date={{.DATE | default "2025-11-13"}}
       - task: compress
       - echo "✅ Daily update completed"
 
@@ -59,27 +59,35 @@ tasks:
       - echo "🧹 Cleaned database files"
 
   # バルクロード: 過去1年分のEDINETデータを一括取得
-  # 使い方: task bulk-load FROM=2025-04-01 TO=2026-03-30
+  # 使い方:
+  #   task bulk-load FROM=2025-04-01 TO=2026-03-30
+  #   task bulk-load FROM=2025-04-01 TO=2026-03-30 SKIP_PRICES=1  # 株価取得をスキップ
   bulk-load:
     desc: "過去データの一括取得（EDINET_API_KEY環境変数が必要）"
     cmds:
       - echo "🚀 バルクロード開始 ({{.FROM}} 〜 {{.TO}})"
-      - go run main.go -mode=batch -from={{.FROM}} -to={{.TO}}
+      - go run . -mode=batch -from={{.FROM}} -to={{.TO}}
       - echo ""
-      - echo "📈 株価データ取得中..."
-      - go run main.go -mode=fetch-prices
+      - |
+        if [ "{{.SKIP_PRICES}}" = "1" ]; then
+          echo "⏭️ 株価取得をスキップ (SKIP_PRICES=1)"
+        else
+          echo "📈 株価データ取得中..."
+          go run . -mode=fetch-prices
+        fi
       - echo ""
       - echo "📊 RS計算中..."
-      - go run main.go -mode=calc-rs
+      - go run . -mode=calc-rs
       - echo ""
       - echo "📦 DB圧縮中..."
       - task compress
       - echo ""
       - echo "✅ バルクロード完了!"
-      - echo "📋 次のステップ: task upload-db でGitHub Releasesにアップロード"
+      - 'echo "📋 次のステップ: task upload-db でGitHub Releasesにアップロード"'
     vars:
       FROM: '{{.FROM | default "2025-04-01"}}'
       TO: '{{.TO | default "2026-03-30"}}'
+      SKIP_PRICES: '{{.SKIP_PRICES | default ""}}'
 
   # DBをGitHub Releasesにアップロード
   # gh CLI が必要: brew install gh
