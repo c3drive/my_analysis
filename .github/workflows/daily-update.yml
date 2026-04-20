@@ -142,24 +142,39 @@ jobs:
         run: |
           echo "📊 Post-update statistics:"
           TOTAL_STOCKS="0"; WITH_SALES="0"; WITH_INCOME="0"; PRICE_STOCKS="0"
+          WITH_ASSETS="0"; WITH_CASH="0"; WITH_EQUITY="0"; RS_STOCKS="0"
           if [ -f data/xbrl.db ]; then
             TOTAL_STOCKS=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks;" 2>/dev/null || echo "0")
             WITH_SALES=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE net_sales > 0;" 2>/dev/null || echo "0")
             WITH_INCOME=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE net_income > 0;" 2>/dev/null || echo "0")
+            WITH_ASSETS=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE total_assets > 0;" 2>/dev/null || echo "0")
+            WITH_CASH=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE cash_and_deposits > 0;" 2>/dev/null || echo "0")
+            WITH_EQUITY=$(sqlite3 data/xbrl.db "SELECT COUNT(*) FROM stocks WHERE shareholders_equity > 0;" 2>/dev/null || echo "0")
             LATEST_DATE=$(sqlite3 data/xbrl.db "SELECT MAX(updated_at) FROM stocks WHERE updated_at != '';" 2>/dev/null || echo "N/A")
             echo "  Total stocks: $TOTAL_STOCKS"
             echo "  With sales: $WITH_SALES"
             echo "  With net_income: $WITH_INCOME"
+            echo "  With total_assets: $WITH_ASSETS"
+            echo "  With cash: $WITH_CASH"
+            echo "  With equity: $WITH_EQUITY"
             echo "  Latest date: $LATEST_DATE"
           fi
           if [ -f data/stock_price.db ]; then
             PRICE_STOCKS=$(sqlite3 data/stock_price.db "SELECT COUNT(DISTINCT code) FROM stock_prices;" 2>/dev/null || echo "0")
             echo "  Stocks with prices: $PRICE_STOCKS"
           fi
+          if [ -f data/rs.db ]; then
+            RS_STOCKS=$(sqlite3 data/rs.db "SELECT COUNT(DISTINCT code) FROM rs_scores;" 2>/dev/null || echo "0")
+            echo "  Stocks with RS: $RS_STOCKS"
+          fi
           echo "total_stocks=$TOTAL_STOCKS" >> $GITHUB_OUTPUT
           echo "with_sales=$WITH_SALES" >> $GITHUB_OUTPUT
           echo "with_income=$WITH_INCOME" >> $GITHUB_OUTPUT
+          echo "with_assets=$WITH_ASSETS" >> $GITHUB_OUTPUT
+          echo "with_cash=$WITH_CASH" >> $GITHUB_OUTPUT
+          echo "with_equity=$WITH_EQUITY" >> $GITHUB_OUTPUT
           echo "price_stocks=$PRICE_STOCKS" >> $GITHUB_OUTPUT
+          echo "rs_stocks=$RS_STOCKS" >> $GITHUB_OUTPUT
 
       - name: Detect new stocks
         id: new-stocks
@@ -250,10 +265,14 @@ jobs:
           echo "| 総銘柄数 | ${{ steps.post-stats.outputs.total_stocks }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 売上データあり | ${{ steps.post-stats.outputs.with_sales }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 純利益データあり | ${{ steps.post-stats.outputs.with_income }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 総資産データあり | ${{ steps.post-stats.outputs.with_assets }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 現金データあり | ${{ steps.post-stats.outputs.with_cash }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 株主資本データあり | ${{ steps.post-stats.outputs.with_equity }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 株価データあり | ${{ steps.post-stats.outputs.price_stocks }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| RSデータあり | ${{ steps.post-stats.outputs.rs_stocks }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 今回追加 | ${{ steps.fetch-data.outputs.total_new }} 件 |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📥 DB Download" >> $GITHUB_STEP_SUMMARY
+          echo "### 📈 DB Download" >> $GITHUB_STEP_SUMMARY
           echo "- [📦 Release: $RELEASE_TAG]($RELEASE_URL)" >> $GITHUB_STEP_SUMMARY
           echo "- [xbrl.db.gz]($DL_URL/xbrl.db.gz) | [stock_price.db.gz]($DL_URL/stock_price.db.gz) | [rs.db.gz]($DL_URL/rs.db.gz)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

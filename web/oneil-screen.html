@@ -124,6 +124,68 @@
             color: #ff6b6b;
         }
 
+        /* Filter controls */
+        .filter-bar {
+            display: flex;
+            gap: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 18px 24px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .filter-group label {
+            font-size: 0.72rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-group input[type="number"] {
+            width: 75px;
+            padding: 6px 8px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        .filter-group input:focus {
+            outline: none;
+            border-color: #ff6b6b;
+        }
+
+        .filter-group select {
+            padding: 6px 8px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 0.85rem;
+        }
+
+        .filter-group select option {
+            background: #1a1a2e;
+        }
+
+        .filter-count {
+            font-size: 0.85rem;
+            color: #ff6b6b;
+            font-weight: 600;
+            align-self: center;
+        }
+
         /* Scoring Criteria */
         .criteria-grid {
             display: grid;
@@ -216,6 +278,11 @@
             font-family: 'Courier New', monospace;
             color: #00d9ff;
             font-weight: 600;
+            cursor: pointer;
+        }
+
+        .code-cell:hover {
+            text-decoration: underline;
         }
 
         .name-cell {
@@ -223,6 +290,16 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .name-cell:hover {
+            color: #fff;
+        }
+
+        tr {
+            cursor: pointer;
+            transition: background 0.15s;
         }
 
         .score-cell {
@@ -367,6 +444,37 @@
             </div>
         </div>
 
+        <div class="filter-bar" id="filter-bar">
+            <div class="filter-group">
+                <label>ROE最低値 (%)</label>
+                <input type="number" id="filter-roe" value="0" step="1" min="0" max="100">
+            </div>
+            <div class="filter-group">
+                <label>RS最低値</label>
+                <input type="number" id="filter-rs" value="0" step="5" min="0" max="99">
+            </div>
+            <div class="filter-group">
+                <label>PER上限</label>
+                <input type="number" id="filter-per" value="100" step="5" min="0">
+            </div>
+            <div class="filter-group">
+                <label>自己資本率最低 (%)</label>
+                <input type="number" id="filter-equity" value="0" step="5" min="0">
+            </div>
+            <div class="filter-group">
+                <label>並び替え</label>
+                <select id="sort-by">
+                    <option value="score">スコア</option>
+                    <option value="rs">RS</option>
+                    <option value="roe">ROE</option>
+                    <option value="per">PER</option>
+                    <option value="pbr">PBR</option>
+                    <option value="equity">自己資本率</option>
+                </select>
+            </div>
+            <span class="filter-count" id="filter-count"></span>
+        </div>
+
         <div class="table-wrapper">
             <table id="ranking-table">
                 <thead>
@@ -381,12 +489,13 @@
                         <th>ROE(%)</th>
                         <th>PER</th>
                         <th>PBR</th>
-                        <th>自己資本比率(%)</th>
+                        <th>自己資本率(%)</th>
+                        <th>RS</th>
                     </tr>
                 </thead>
                 <tbody id="table-body">
                     <tr>
-                        <td colspan="11" class="loading">
+                        <td colspan="12" class="loading">
                             <div class="loading-spinner">⏳</div>
                             <p>データを読み込んでいます...</p>
                         </td>
@@ -398,21 +507,42 @@
 
     <script>
         let stocksData = [];
+        let allStocksData = [];
 
         async function loadData() {
             try {
                 document.getElementById('db-status').textContent = '取得中...';
 
-                // APIからデータを取得
-                const response = await fetch('/api/oneil-ranking');
-                if (!response.ok) throw new Error('API error');
-                stocksData = await response.json();
+                // APIからデータを取得（失敗したらstocks.jsonにフォールバック）
+                let data;
+                try {
+                    const response = await fetch('/api/oneil-ranking');
+                    if (!response.ok) throw new Error('API error');
+                    data = await response.json();
+                } catch (apiErr) {
+                    console.log('API unavailable, trying stocks.json...');
+                    const res = await fetch('stocks.json');
+                    if (!res.ok) throw new Error('stocks.json not found');
+                    const stocks = await res.json();
+                    // スコアを計算（サーバー側と同じロジック）
+                    data = stocks.filter(s => s.NetIncome > 0 && s.SharesIssued > 0).map(s => {
+                        let score = 0;
+                        if (s.ROE > 20) score += 20; else if (s.ROE > 15) score += 15; else if (s.ROE > 10) score += 10;
+                        if (s.PER && s.PER < 10) score += 15; else if (s.PER && s.PER < 15) score += 10; else if (s.PER && s.PER < 20) score += 5;
+                        if (s.PBR && s.PBR < 1) score += 10; else if (s.PBR && s.PBR < 1.5) score += 5;
+                        if (s.EquityRatio && s.EquityRatio > 50) score += 10; else if (s.EquityRatio && s.EquityRatio > 30) score += 5;
+                        if (s.RS && s.RS >= 80) score += 15; else if (s.RS && s.RS >= 60) score += 10;
+                        return { ...s, Score: score };
+                    }).sort((a, b) => b.Score - a.Score);
+                }
+
+                allStocksData = data || [];
+                stocksData = allStocksData;
 
                 if (stocksData && stocksData.length > 0) {
                     document.getElementById('db-status').textContent = '読込完了';
                     document.getElementById('stock-count').textContent = stocksData.length + '社';
 
-                    // 最新更新日を取得
                     const dates = stocksData
                         .filter(s => s.UpdatedAt)
                         .map(s => s.UpdatedAt.substring(0, 10));
@@ -420,7 +550,7 @@
                         document.getElementById('last-update').textContent = dates[0];
                     }
 
-                    renderTable(stocksData);
+                    applyFilters();
                 } else {
                     showEmptyState();
                 }
@@ -434,7 +564,7 @@
             document.getElementById('db-status').textContent = 'データなし';
             document.getElementById('table-body').innerHTML = `
                 <tr>
-                    <td colspan="11" class="empty-state">
+                    <td colspan="12" class="empty-state">
                         <div class="empty-state-icon">📭</div>
                         <p>対象となる銘柄データがありません。</p>
                         <p>財務データを取得してください。</p>
@@ -529,6 +659,8 @@
                 const pbr = formatPBR(stock.PBR);
                 const equityRatio = formatEquityRatio(stock.EquityRatio);
 
+                const rs = stock.RS ? { text: stock.RS.toFixed(0), class: stock.RS >= 80 ? 'value-good' : stock.RS >= 60 ? 'value-ok' : stock.RS <= 30 ? 'value-bad' : '' } : { text: '-', class: 'no-data' };
+
                 tr.innerHTML = `
                     <td class="rank-cell ${getRankClass(rank)}">${rank}</td>
                     <td class="score-cell ${getScoreClass(stock.Score)}">${stock.Score.toFixed(0)}</td>
@@ -541,10 +673,50 @@
                     <td class="number-cell ${per.class}">${per.text}</td>
                     <td class="number-cell ${pbr.class}">${pbr.text}</td>
                     <td class="number-cell ${equityRatio.class}">${equityRatio.text}</td>
+                    <td class="number-cell ${rs.class}">${rs.text}</td>
                 `;
+                tr.addEventListener('click', () => {
+                    window.location.href = `stock-detail.html?code=${stock.Code}&from=oneil-screen.html`;
+                });
                 tbody.appendChild(tr);
             });
         }
+
+        // フィルター適用
+        function applyFilters() {
+            const minROE = parseFloat(document.getElementById('filter-roe').value) || 0;
+            const minRS = parseFloat(document.getElementById('filter-rs').value) || 0;
+            const maxPER = parseFloat(document.getElementById('filter-per').value) || 999;
+            const minEquity = parseFloat(document.getElementById('filter-equity').value) || 0;
+            const sortBy = document.getElementById('sort-by').value;
+
+            let filtered = allStocksData.filter(s => {
+                if (minROE > 0 && (!s.ROE || s.ROE < minROE)) return false;
+                if (minRS > 0 && (!s.RS || s.RS < minRS)) return false;
+                if (maxPER < 999 && s.PER && s.PER > maxPER) return false;
+                if (minEquity > 0 && (!s.EquityRatio || s.EquityRatio < minEquity)) return false;
+                return true;
+            });
+
+            // 並び替え
+            const sortFns = {
+                score: (a, b) => (b.Score || 0) - (a.Score || 0),
+                rs: (a, b) => (b.RS || 0) - (a.RS || 0),
+                roe: (a, b) => (b.ROE || 0) - (a.ROE || 0),
+                per: (a, b) => (a.PER || 999) - (b.PER || 999),
+                pbr: (a, b) => (a.PBR || 999) - (b.PBR || 999),
+                equity: (a, b) => (b.EquityRatio || 0) - (a.EquityRatio || 0),
+            };
+            filtered.sort(sortFns[sortBy] || sortFns.score);
+
+            document.getElementById('filter-count').textContent = `${filtered.length} / ${allStocksData.length} 社`;
+            renderTable(filtered);
+        }
+
+        // フィルターイベント
+        document.querySelectorAll('#filter-bar input, #filter-bar select').forEach(el => {
+            el.addEventListener('change', applyFilters);
+        });
 
         // 初期読み込み
         loadData();

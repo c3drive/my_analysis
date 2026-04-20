@@ -106,6 +106,12 @@ jobs:
               CurrentLiabilities int64   `json:"CurrentLiabilities"`
               CashAndDeposits   int64    `json:"CashAndDeposits"`
               SharesIssued      int64    `json:"SharesIssued"`
+              InvestmentSecurities int64 `json:"InvestmentSecurities"`
+              Securities        int64    `json:"Securities"`
+              AccountsReceivable int64   `json:"AccountsReceivable"`
+              Inventories       int64    `json:"Inventories"`
+              NonCurrentLiabilities int64 `json:"NonCurrentLiabilities"`
+              ShareholdersEquity int64   `json:"ShareholdersEquity"`
               LastPrice         float64  `json:"LastPrice"`
               PriceDate         *string  `json:"PriceDate"`
               // Investment metrics
@@ -150,6 +156,9 @@ jobs:
                       COALESCE(s.total_assets, 0), COALESCE(s.net_assets, 0), COALESCE(s.current_assets, 0),
                       COALESCE(s.liabilities, 0), COALESCE(s.current_liabilities, 0),
                       COALESCE(s.cash_and_deposits, 0), COALESCE(s.shares_issued, 0),
+                      COALESCE(s.investment_securities, 0), COALESCE(s.securities, 0),
+                      COALESCE(s.accounts_receivable, 0), COALESCE(s.inventories, 0),
+                      COALESCE(s.non_current_liabilities, 0), COALESCE(s.shareholders_equity, 0),
                       0, NULL
                   FROM stocks s
                   ORDER BY s.code ASC
@@ -161,6 +170,9 @@ jobs:
                           COALESCE(s.total_assets, 0), COALESCE(s.net_assets, 0), COALESCE(s.current_assets, 0),
                           COALESCE(s.liabilities, 0), COALESCE(s.current_liabilities, 0),
                           COALESCE(s.cash_and_deposits, 0), COALESCE(s.shares_issued, 0),
+                          COALESCE(s.investment_securities, 0), COALESCE(s.securities, 0),
+                          COALESCE(s.accounts_receivable, 0), COALESCE(s.inventories, 0),
+                          COALESCE(s.non_current_liabilities, 0), COALESCE(s.shareholders_equity, 0),
                           COALESCE(p.close, 0), p.date
                       FROM stocks s
                       LEFT JOIN (
@@ -185,6 +197,9 @@ jobs:
                       &s.TotalAssets, &s.NetAssets, &s.CurrentAssets,
                       &s.Liabilities, &s.CurrentLiabilities,
                       &s.CashAndDeposits, &s.SharesIssued,
+                      &s.InvestmentSecurities, &s.Securities,
+                      &s.AccountsReceivable, &s.Inventories,
+                      &s.NonCurrentLiabilities, &s.ShareholdersEquity,
                       &s.LastPrice, &priceDate)
                   if priceDate.Valid {
                       s.PriceDate = &priceDate.String

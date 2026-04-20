@@ -858,6 +858,13 @@
                     sub: stockInfo.NetNetRatio ? (stockInfo.NetNetRatio > 1.5 ? 'ウルトラ割安' : stockInfo.NetNetRatio > 1 ? '割安' : stockInfo.NetNetRatio > 0.67 ? 'グレアム基準' : '') : '',
                     accent: 'rgba(255,215,0,0.4)',
                 },
+                {
+                    label: 'RS (相対強度)',
+                    value: stockInfo.RS ? `${stockInfo.RS.toFixed(0)}` : '-',
+                    class: stockInfo.RS ? (stockInfo.RS >= 80 ? 'positive' : stockInfo.RS <= 30 ? 'negative' : '') : '',
+                    sub: stockInfo.RS ? (stockInfo.RS >= 90 ? '🔥 トップ10%' : stockInfo.RS >= 80 ? '上位20%' : stockInfo.RS <= 20 ? '下位20%' : '') : '',
+                    accent: 'rgba(200,100,255,0.4)',
+                },
             ];
 
             metrics.forEach(m => {
@@ -894,6 +901,12 @@
                 { label: '負債合計', value: fmt(stockInfo.Liabilities) },
                 { label: '流動負債', value: fmt(stockInfo.CurrentLiabilities) },
                 { label: '現金及び預金', value: fmt(stockInfo.CashAndDeposits) },
+                { label: '投資有価証券', value: fmt(stockInfo.InvestmentSecurities) },
+                { label: '有価証券', value: fmt(stockInfo.Securities) },
+                { label: '売掛金', value: fmt(stockInfo.AccountsReceivable) },
+                { label: '棚卸資産', value: fmt(stockInfo.Inventories) },
+                { label: '固定負債', value: fmt(stockInfo.NonCurrentLiabilities) },
+                { label: '株主資本', value: fmt(stockInfo.ShareholdersEquity) },
                 { label: '発行済株式数', value: fmtShares(stockInfo.SharesIssued) },
             ];
 

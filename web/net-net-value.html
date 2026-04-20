@@ -1078,11 +1078,14 @@
             { key: 'Liabilities', label: '⚠️ 負債合計' },
             { key: 'CurrentLiabilities', label: '📋 流動負債' },
             { key: 'NonCurrentLiabilities', label: '🔒 固定負債', computed: true },
+            { key: 'NonCurrentLiabilitiesDB', label: '🔒 固定負債(DB)' },
+            { key: 'ShareholdersEquity', label: '👤 株主資本' },
         ];
 
         function getStockFieldValue(stock, key) {
             if (key === 'FixedAssets') return Math.max(0, (stock.TotalAssets || 0) - (stock.CurrentAssets || 0));
             if (key === 'NonCurrentLiabilities') return Math.max(0, (stock.Liabilities || 0) - (stock.CurrentLiabilities || 0));
+            if (key === 'NonCurrentLiabilitiesDB') return stock.NonCurrentLiabilities || 0;
             return stock[key] || 0;
         }
 
