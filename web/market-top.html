@@ -803,6 +803,9 @@
                                 style="background:rgba(255,170,0,0.15);border:1px solid rgba(255,170,0,0.3);"></span>
                             注意期間
                         </div>
+                        <div class="legend-item" style="margin-left:auto;color:#666;font-size:0.72rem;">
+                            💡 ダブルクリック: 水平ライン追加 / 右クリック: 削除
+                        </div>
                     </div>
                 </div>
 
@@ -1196,6 +1199,9 @@
             // ツールチップ
             setupTooltip();
 
+            // 水平ライン（ダブルクリックで追加）
+            setupHorizontalLines();
+
             // リサイズ
             const resizeObserver = new ResizeObserver(() => {
                 chart.applyOptions({ width: container.clientWidth });
@@ -1203,6 +1209,64 @@
             resizeObserver.observe(container);
 
             chart.timeScale().fitContent();
+        }
+
+        // ==============================================================
+        // 水平ライン
+        // ==============================================================
+        let priceLines = [];
+
+        function setupHorizontalLines() {
+            const container = document.getElementById('market-chart');
+
+            container.addEventListener('dblclick', (e) => {
+                if (!chart || !candleSeries) return;
+
+                // マウス位置から価格を逆算
+                const rect = container.getBoundingClientRect();
+                const y = e.clientY - rect.top;
+                const price = candleSeries.coordinateToPrice(y);
+                if (price == null || !isFinite(price)) return;
+
+                const roundedPrice = Math.round(price);
+                const lineColors = ['#ffaa00', '#00d9ff', '#a855f7', '#ff6b9d', '#00ff88'];
+                const colorIdx = priceLines.length % lineColors.length;
+
+                const priceLine = candleSeries.createPriceLine({
+                    price: roundedPrice,
+                    color: lineColors[colorIdx],
+                    lineWidth: 1,
+                    lineStyle: 2, // dashed
+                    axisLabelVisible: true,
+                    title: `¥${roundedPrice.toLocaleString()}`,
+                });
+
+                priceLines.push(priceLine);
+            });
+
+            // 右クリックで最寄りのラインを削除
+            container.addEventListener('contextmenu', (e) => {
+                if (priceLines.length === 0) return;
+                e.preventDefault();
+
+                const rect = container.getBoundingClientRect();
+                const y = e.clientY - rect.top;
+                const clickPrice = candleSeries.coordinateToPrice(y);
+                if (clickPrice == null || !isFinite(clickPrice)) return;
+
+                let closestIdx = 0;
+                let closestDist = Infinity;
+                priceLines.forEach((pl, i) => {
+                    const dist = Math.abs(pl.options().price - clickPrice);
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closestIdx = i;
+                    }
+                });
+
+                candleSeries.removePriceLine(priceLines[closestIdx]);
+                priceLines.splice(closestIdx, 1);
+            });
         }
 
         // ==============================================================

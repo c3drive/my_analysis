@@ -932,7 +932,35 @@
                     </div>
                 </div>
 
-                <div class="table-container animate-in">
+                <!-- タブ切替 -->
+                <div class="tab-bar animate-in" style="display:flex;gap:0;margin-bottom:0;border-radius:12px 12px 0 0;overflow:hidden;border:1px solid rgba(255,255,255,0.06);border-bottom:none;">
+                    <button class="tab-btn active" id="tab-ranking" onclick="switchTab('ranking')" style="flex:1;padding:14px 20px;background:rgba(0,255,136,0.1);border:none;color:#00ff88;font-weight:600;cursor:pointer;font-size:0.9rem;transition:all 0.2s;">📊 ランキング</button>
+                    <button class="tab-btn" id="tab-chart" onclick="switchTab('chart')" style="flex:1;padding:14px 20px;background:rgba(255,255,255,0.02);border:none;color:#888;font-weight:600;cursor:pointer;font-size:0.9rem;transition:all 0.2s;">📈 PBR散布図</button>
+                </div>
+
+                <!-- PBR散布図パネル -->
+                <div id="panel-chart" style="display:none;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-top:none;border-radius:0 0 12px 12px;padding:24px;margin-bottom:30px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                        <div style="font-size:1.1rem;font-weight:600;color:#e0e0e0;">PBR vs ネットネット比率</div>
+                        <div style="display:flex;gap:12px;align-items:center;">
+                            <label style="font-size:0.75rem;color:#888;">X軸:</label>
+                            <select id="chart-x-axis" style="padding:4px 8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#e0e0e0;font-size:0.8rem;">
+                                <option value="PBR">PBR</option>
+                                <option value="EquityRatio">自己資本率</option>
+                                <option value="MarketCap">時価総額(億)</option>
+                            </select>
+                            <label style="font-size:0.75rem;color:#888;">Y軸:</label>
+                            <select id="chart-y-axis" style="padding:4px 8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#e0e0e0;font-size:0.8rem;">
+                                <option value="netNetRatio">ネットネット比率</option>
+                                <option value="specialPBR">SP-PBR</option>
+                            </select>
+                        </div>
+                    </div>
+                    <canvas id="scatter-chart" width="1200" height="500" style="width:100%;height:500px;border-radius:8px;background:rgba(0,0,0,0.2);cursor:crosshair;"></canvas>
+                    <div id="scatter-tooltip" style="display:none;position:fixed;background:rgba(10,15,30,0.95);border:1px solid rgba(0,255,136,0.3);border-radius:8px;padding:10px 14px;font-size:0.8rem;color:#e0e0e0;pointer-events:none;z-index:100;line-height:1.5;"></div>
+                </div>
+
+                <div id="panel-ranking" class="table-container animate-in">
                     <div class="table-header">
                         <span class="table-title">💎 ネットネットバリュー ランキング</span>
                         <div class="table-controls">
@@ -1473,6 +1501,257 @@
 
         // Start
         init();
+
+        // ==============================================================
+        // タブ切替
+        // ==============================================================
+        function switchTab(tab) {
+            const rankingPanel = document.getElementById('panel-ranking');
+            const chartPanel = document.getElementById('panel-chart');
+            const tabRanking = document.getElementById('tab-ranking');
+            const tabChart = document.getElementById('tab-chart');
+
+            if (tab === 'ranking') {
+                rankingPanel.style.display = '';
+                chartPanel.style.display = 'none';
+                tabRanking.style.background = 'rgba(0,255,136,0.1)';
+                tabRanking.style.color = '#00ff88';
+                tabChart.style.background = 'rgba(255,255,255,0.02)';
+                tabChart.style.color = '#888';
+            } else {
+                rankingPanel.style.display = 'none';
+                chartPanel.style.display = '';
+                chartPanel.style.borderRadius = '0 0 12px 12px';
+                tabChart.style.background = 'rgba(0,217,255,0.1)';
+                tabChart.style.color = '#00d9ff';
+                tabRanking.style.background = 'rgba(255,255,255,0.02)';
+                tabRanking.style.color = '#888';
+                renderScatterChart();
+            }
+        }
+
+        // ==============================================================
+        // PBR散布図
+        // ==============================================================
+        let scatterPoints = [];
+
+        function renderScatterChart() {
+            const canvas = document.getElementById('scatter-chart');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.clientWidth * dpr;
+            canvas.height = canvas.clientHeight * dpr;
+            ctx.scale(dpr, dpr);
+            const W = canvas.clientWidth;
+            const H = canvas.clientHeight;
+            const pad = { top: 30, right: 30, bottom: 50, left: 70 };
+
+            const xKey = document.getElementById('chart-x-axis').value;
+            const yKey = document.getElementById('chart-y-axis').value;
+
+            const data = getFilteredAndSorted().filter(s => {
+                const xVal = getAxisValue(s, xKey);
+                const yVal = getAxisValue(s, yKey);
+                return xVal != null && yVal != null && isFinite(xVal) && isFinite(yVal);
+            });
+
+            if (data.length === 0) {
+                ctx.clearRect(0, 0, W, H);
+                ctx.fillStyle = '#888';
+                ctx.font = '14px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('データがありません', W / 2, H / 2);
+                return;
+            }
+
+            const xVals = data.map(s => getAxisValue(s, xKey));
+            const yVals = data.map(s => getAxisValue(s, yKey));
+            const xRange = Math.max(Math.max(...xVals) - Math.min(...xVals), 0.01);
+            const yRange = Math.max(Math.max(...yVals) - Math.min(...yVals), 0.01);
+            const xMin = Math.min(...xVals) - xRange * 0.05;
+            const xMax = Math.max(...xVals) + xRange * 0.05;
+            const yMin = Math.min(...yVals) - yRange * 0.05;
+            const yMax = Math.max(...yVals) + yRange * 0.05;
+
+            const plotW = W - pad.left - pad.right;
+            const plotH = H - pad.top - pad.bottom;
+
+            function toX(v) { return pad.left + (v - xMin) / (xMax - xMin) * plotW; }
+            function toY(v) { return pad.top + plotH - (v - yMin) / (yMax - yMin) * plotH; }
+
+            // Clear
+            ctx.clearRect(0, 0, W, H);
+
+            // Grid
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 5; i++) {
+                const x = pad.left + plotW * i / 5;
+                const y = pad.top + plotH * i / 5;
+                ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + plotH); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + plotW, y); ctx.stroke();
+            }
+
+            // Axis labels
+            ctx.fillStyle = '#888';
+            ctx.font = '10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            for (let i = 0; i <= 5; i++) {
+                const v = xMin + (xMax - xMin) * i / 5;
+                ctx.fillText(v.toFixed(xKey === 'MarketCap' ? 0 : 2), pad.left + plotW * i / 5, H - 10);
+            }
+            ctx.textAlign = 'right';
+            for (let i = 0; i <= 5; i++) {
+                const v = yMin + (yMax - yMin) * (5 - i) / 5;
+                ctx.fillText(v.toFixed(2), pad.left - 8, pad.top + plotH * i / 5 + 4);
+            }
+
+            // Axis titles
+            ctx.fillStyle = '#aaa';
+            ctx.font = '12px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            const xLabel = { PBR: 'PBR', EquityRatio: '自己資本率 (%)', MarketCap: '時価総額 (億円)' }[xKey];
+            const yLabel = { netNetRatio: 'ネットネット比率', specialPBR: 'SP-PBR' }[yKey];
+            ctx.fillText(xLabel, pad.left + plotW / 2, H - 2);
+            ctx.save();
+            ctx.translate(14, pad.top + plotH / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText(yLabel, 0, 0);
+            ctx.restore();
+
+            // Reference lines
+            if (yKey === 'netNetRatio') {
+                // y=1 line (net net threshold)
+                const y1 = toY(1);
+                if (y1 >= pad.top && y1 <= pad.top + plotH) {
+                    ctx.strokeStyle = 'rgba(0,255,136,0.3)';
+                    ctx.setLineDash([6, 4]);
+                    ctx.beginPath(); ctx.moveTo(pad.left, y1); ctx.lineTo(pad.left + plotW, y1); ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = 'rgba(0,255,136,0.5)';
+                    ctx.font = '10px Inter, sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText('NN比率=1.0', pad.left + 4, y1 - 4);
+                }
+            }
+            if (xKey === 'PBR') {
+                const x1 = toX(1);
+                if (x1 >= pad.left && x1 <= pad.left + plotW) {
+                    ctx.strokeStyle = 'rgba(255,170,0,0.3)';
+                    ctx.setLineDash([6, 4]);
+                    ctx.beginPath(); ctx.moveTo(x1, pad.top); ctx.lineTo(x1, pad.top + plotH); ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = 'rgba(255,170,0,0.5)';
+                    ctx.font = '10px Inter, sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText('PBR=1.0', x1 + 4, pad.top + 14);
+                }
+            }
+
+            // Points
+            scatterPoints = [];
+            data.forEach(s => {
+                const xv = getAxisValue(s, xKey);
+                const yv = getAxisValue(s, yKey);
+                const px = toX(xv);
+                const py = toY(yv);
+                const mcap = (s.marketCapCalc || 0) / 1e8;
+                const radius = Math.max(3, Math.min(14, Math.sqrt(mcap) * 0.4));
+
+                // Color: green if nn>1, blue if nn>0.67, red otherwise
+                let color;
+                const nnr = s.netNetRatio || 0;
+                if (nnr >= 1) color = 'rgba(0,255,136,0.6)';
+                else if (nnr >= 0.67) color = 'rgba(0,217,255,0.5)';
+                else color = 'rgba(255,68,102,0.35)';
+
+                ctx.beginPath();
+                ctx.arc(px, py, radius, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = color.replace(/[\d.]+\)$/, '0.8)');
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                scatterPoints.push({ x: px, y: py, r: radius, stock: s, xv, yv });
+            });
+        }
+
+        function getAxisValue(s, key) {
+            if (key === 'PBR') return s.PBR;
+            if (key === 'EquityRatio') return s.EquityRatio;
+            if (key === 'MarketCap') return (s.marketCapCalc || 0) / 1e8;
+            if (key === 'netNetRatio') return s.netNetRatio;
+            if (key === 'specialPBR') return s.specialPBR;
+            return null;
+        }
+
+        // Scatter chart tooltip
+        const scatterCanvas = document.getElementById('scatter-chart');
+        const scatterTooltip = document.getElementById('scatter-tooltip');
+
+        scatterCanvas.addEventListener('mousemove', (e) => {
+            const rect = scatterCanvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            let found = null;
+            for (const pt of scatterPoints) {
+                const dx = mx - pt.x;
+                const dy = my - pt.y;
+                if (dx * dx + dy * dy <= (pt.r + 4) * (pt.r + 4)) {
+                    found = pt;
+                    break;
+                }
+            }
+
+            if (found) {
+                const s = found.stock;
+                const mcap = ((s.marketCapCalc || 0) / 1e8).toFixed(1);
+                scatterTooltip.innerHTML = `
+                    <strong>${s.Code}</strong> ${s.Name}<br>
+                    NN比率: <span style="color:#00ff88">${s.netNetRatio.toFixed(2)}</span> |
+                    PBR: <span style="color:#ffaa00">${s.PBR != null ? s.PBR.toFixed(2) : '-'}</span><br>
+                    SP-PBR: ${s.specialPBR != null ? s.specialPBR.toFixed(2) : '-'} |
+                    時価総額: ${mcap}億
+                `;
+                scatterTooltip.style.display = '';
+                scatterTooltip.style.left = (e.clientX + 12) + 'px';
+                scatterTooltip.style.top = (e.clientY - 10) + 'px';
+                scatterCanvas.style.cursor = 'pointer';
+            } else {
+                scatterTooltip.style.display = 'none';
+                scatterCanvas.style.cursor = 'crosshair';
+            }
+        });
+
+        scatterCanvas.addEventListener('mouseleave', () => {
+            scatterTooltip.style.display = 'none';
+        });
+
+        scatterCanvas.addEventListener('click', (e) => {
+            const rect = scatterCanvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            for (const pt of scatterPoints) {
+                const dx = mx - pt.x;
+                const dy = my - pt.y;
+                if (dx * dx + dy * dy <= (pt.r + 4) * (pt.r + 4)) {
+                    window.location.href = `stock-detail.html?code=${pt.stock.Code}&from=net-net-value.html`;
+                    return;
+                }
+            }
+        });
+
+        document.getElementById('chart-x-axis').addEventListener('change', renderScatterChart);
+        document.getElementById('chart-y-axis').addEventListener('change', renderScatterChart);
+
+        // 散布図リサイズ対応
+        new ResizeObserver(() => {
+            if (document.getElementById('panel-chart').style.display !== 'none') {
+                renderScatterChart();
+            }
+        }).observe(document.getElementById('panel-chart'));
     </script>
 </body>
 

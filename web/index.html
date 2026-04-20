@@ -467,6 +467,7 @@
                             <th data-sort="PBR" class="sortable">PBR</th>
                             <th data-sort="EquityRatio" class="sortable">自己資本比率</th>
                             <th data-sort="NetNetRatio" class="sortable">ネットネット</th>
+                            <th data-sort="RS" class="sortable">RS</th>
                             <th data-sort="NetSales" class="sortable">売上高（億円）</th>
                             <th data-sort="NetIncome" class="sortable">純利益（億円）</th>
                             <th data-sort="UpdatedAt" class="sortable">更新日</th>
@@ -655,12 +656,23 @@
                 const equityRatio = formatRatio(stock.EquityRatio, 1, '%');
                 const netNet = formatNetNet(stock.NetNetRatio);
 
+                // RS
+                function formatRS(value) {
+                    if (value === null || value === undefined) return { text: '-', class: 'no-data' };
+                    let colorClass = '';
+                    if (value >= 80) colorClass = 'value-good';
+                    else if (value >= 60) colorClass = 'value-ok';
+                    else if (value <= 30) colorClass = 'value-bad';
+                    return { text: value.toFixed(0), class: colorClass };
+                }
+                const rs = formatRS(stock.RS);
+
                 const sales = formatOku(stock.NetSales);
                 const netIncome = formatOku(stock.NetIncome);
 
                 tr.innerHTML = `
-                    <td class="code-cell"><a class="code-link" href="/stock-detail.html?code=${stock.Code}&from=/">${stock.Code}</a></td>
-                    <td class="name-cell" title="${stock.Name}"><a class="code-link" href="/stock-detail.html?code=${stock.Code}&from=/">${stock.Name}</a></td>
+                    <td class="code-cell"><a class="code-link" href="stock-detail.html?code=${stock.Code}&from=index.html">${stock.Code}</a></td>
+                    <td class="name-cell" title="${stock.Name}"><a class="code-link" href="stock-detail.html?code=${stock.Code}&from=index.html">${stock.Name}</a></td>
                     <td class="number-cell ${priceClass}">${priceText}</td>
                     <td class="number-cell ${marketCap.class}">${marketCap.text}</td>
                     <td class="number-cell ${eps.class}">${eps.text}</td>
@@ -669,6 +681,7 @@
                     <td class="number-cell ${pbr.class}">${pbr.text}</td>
                     <td class="number-cell ${equityRatio.class}">${equityRatio.text}</td>
                     <td class="number-cell ${netNet.class}">${netNet.text}</td>
+                    <td class="number-cell ${rs.class}">${rs.text}</td>
                     <td class="number-cell ${sales.class}">${sales.text}</td>
                     <td class="number-cell ${netIncome.class}">${netIncome.text}</td>
                     <td class="date-cell">${stock.UpdatedAt ? stock.UpdatedAt.substring(0, 10) : '-'}</td>
