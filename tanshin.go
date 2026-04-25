@@ -241,13 +241,8 @@ func parseTanshinText(text string) FinancialData {
 		multiplier = 1_000
 	}
 
-	// 優先方式: 「YYYY年X月期」で始まる行から数値列を抽出 (当期=最初の行)
-	// 多くの決算短信は「年X月期 売上 % 営利 % 経常/税引前 % 純利益 %」の4列パターン
-	if pdata := extractFromPeriodRow(text); pdata != nil {
-		d.NetSales = pdata.NetSales * multiplier
-		d.OperatingIncome = pdata.OperatingIncome * multiplier
-		d.NetIncome = pdata.NetIncome * multiplier
-	}
+	// 優先方式は項目名行頭マッチ (findFirst)。
+	// extractFromPeriodRow は実験で精度悪化したため、純利益のみのフォールバックに後置する。
 
 	// 主要項目の抽出ヘルパー
 	// 行末まで or 改行までの数字を厳格にマッチ (隣接行混入を防ぐ)
@@ -297,6 +292,14 @@ func parseTanshinText(text string) FinancialData {
 			`(?m)^[\s　]*当期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
 			`(?m)^[\s　]*四半期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
 		}) * multiplier
+	}
+
+	// 最終フォールバック: 売上は取れたが純利益が0なら、期表示行から推定
+	// (改行越え対応で取れなかった項目名マッチをカバー)
+	if d.NetIncome == 0 && d.NetSales > 0 {
+		if pdata := extractFromPeriodRow(text); pdata != nil && pdata.NetIncome != 0 {
+			d.NetIncome = pdata.NetIncome * multiplier
+		}
 	}
 
 	d.TotalAssets = findFirst([]string{
