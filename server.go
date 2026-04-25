@@ -242,6 +242,107 @@ func startServer() {
 		json.NewEncoder(w).Encode(points)
 	})
 
+	// 特定日基準のスナップショットAPI（ネットネット分析の遡及計算用）
+	// 指定日以前の最新株価を採用し、ネットネット比率等を再計算する
+	http.HandleFunc("/api/stocks-as-of/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		dateStr := strings.TrimPrefix(r.URL.Path, "/api/stocks-as-of/")
+		if dateStr == "" {
+			http.Error(w, "date required (YYYY-MM-DD)", http.StatusBadRequest)
+			return
+		}
+		// 簡易バリデーション
+		if len(dateStr) != 10 {
+			http.Error(w, "invalid date format, expected YYYY-MM-DD", http.StatusBadRequest)
+			return
+		}
+
+		db, err := openServerDB()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer db.Close()
+
+		// 各銘柄の指定日以前の最新株価をJOIN
+		rows, err := db.Query(`
+			SELECT s.code, s.name, COALESCE(s.updated_at, ''),
+				   COALESCE(s.net_sales, 0), COALESCE(s.operating_income, 0), COALESCE(s.net_income, 0),
+				   COALESCE(s.total_assets, 0), COALESCE(s.net_assets, 0), COALESCE(s.current_assets, 0),
+				   COALESCE(s.liabilities, 0), COALESCE(s.current_liabilities, 0),
+				   COALESCE(s.cash_and_deposits, 0), COALESCE(s.shares_issued, 0),
+				   COALESCE(s.investment_securities, 0), COALESCE(s.securities, 0),
+				   COALESCE(s.accounts_receivable, 0), COALESCE(s.inventories, 0),
+				   COALESCE(s.non_current_liabilities, 0), COALESCE(s.shareholders_equity, 0),
+				   COALESCE(p.close, 0) as last_price,
+				   p.date as price_date
+			FROM stocks s
+			LEFT JOIN (
+				SELECT code, close, date FROM price_db.stock_prices sp1
+				WHERE date <= ?
+				  AND date = (
+					SELECT MAX(date) FROM price_db.stock_prices sp2
+					WHERE sp2.code = sp1.code AND sp2.date <= ?
+				  )
+			) p ON s.code = p.code
+			ORDER BY s.code ASC`, dateStr, dateStr)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		type StockSnapshot struct {
+			Stock
+			LastPrice   float64  `json:"LastPrice"`
+			PriceDate   *string  `json:"PriceDate"`
+			MarketCap   int64    `json:"MarketCap"`
+			PER         *float64 `json:"PER"`
+			PBR         *float64 `json:"PBR"`
+			EPS         *float64 `json:"EPS"`
+			ROE         *float64 `json:"ROE"`
+			EquityRatio *float64 `json:"EquityRatio"`
+			NetNetRatio *float64 `json:"NetNetRatio"`
+			AsOfDate    string   `json:"AsOfDate"`
+		}
+
+		var stocks []StockSnapshot
+		for rows.Next() {
+			var s StockSnapshot
+			var priceDate sql.NullString
+			if err := rows.Scan(&s.Code, &s.Name, &s.UpdatedAt,
+				&s.NetSales, &s.OperatingIncome, &s.NetIncome,
+				&s.TotalAssets, &s.NetAssets, &s.CurrentAssets,
+				&s.Liabilities, &s.CurrentLiabilities,
+				&s.CashAndDeposits, &s.SharesIssued,
+				&s.InvestmentSecurities, &s.Securities,
+				&s.AccountsReceivable, &s.Inventories,
+				&s.NonCurrentLiabilities, &s.ShareholdersEquity,
+				&s.LastPrice, &priceDate); err != nil {
+				continue
+			}
+
+			if priceDate.Valid {
+				s.PriceDate = &priceDate.String
+			}
+			s.AsOfDate = dateStr
+
+			m := calcMetrics(s.LastPrice, s.SharesIssued, s.NetIncome, s.NetAssets, s.TotalAssets, s.CurrentAssets, s.Liabilities)
+			s.MarketCap = m.MarketCap
+			s.PER = m.PER
+			s.PBR = m.PBR
+			s.EPS = m.EPS
+			s.ROE = m.ROE
+			s.EquityRatio = m.EquityRatio
+			s.NetNetRatio = m.NetNetRatio
+
+			stocks = append(stocks, s)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(stocks)
+	})
+
 	// オニール成長株スクリーニングAPI
 	http.HandleFunc("/api/oneil-ranking", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
