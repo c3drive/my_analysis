@@ -363,6 +363,7 @@ func startServer() {
 				   COALESCE(s.total_assets, 0), COALESCE(s.net_assets, 0), COALESCE(s.current_assets, 0),
 				   COALESCE(s.liabilities, 0), COALESCE(s.current_liabilities, 0),
 				   COALESCE(s.cash_and_deposits, 0), COALESCE(s.shares_issued, 0),
+				   COALESCE(s.market_segment, ''), COALESCE(s.sector_33, ''), COALESCE(s.sector_17, ''),
 				   COALESCE(p.close, 0) as last_price,
 				   p.date as price_date
 			FROM stocks s
@@ -379,19 +380,22 @@ func startServer() {
 		defer rows.Close()
 
 		type OneilStock struct {
-			Code        string   `json:"Code"`
-			Name        string   `json:"Name"`
-			Score       float64  `json:"Score"`
-			LastPrice   float64  `json:"LastPrice"`
-			MarketCap   int64    `json:"MarketCap"`
-			NetSales    int64    `json:"NetSales"`
-			NetIncome   int64    `json:"NetIncome"`
-			EPS         *float64 `json:"EPS"`
-			ROE         *float64 `json:"ROE"`
-			PER         *float64 `json:"PER"`
-			PBR         *float64 `json:"PBR"`
-			EquityRatio *float64 `json:"EquityRatio"`
-			RS          *float64 `json:"RS"`
+			Code          string   `json:"Code"`
+			Name          string   `json:"Name"`
+			Score         float64  `json:"Score"`
+			LastPrice     float64  `json:"LastPrice"`
+			MarketCap     int64    `json:"MarketCap"`
+			NetSales      int64    `json:"NetSales"`
+			NetIncome     int64    `json:"NetIncome"`
+			EPS           *float64 `json:"EPS"`
+			ROE           *float64 `json:"ROE"`
+			PER           *float64 `json:"PER"`
+			PBR           *float64 `json:"PBR"`
+			EquityRatio   *float64 `json:"EquityRatio"`
+			RS            *float64 `json:"RS"`
+			MarketSegment string   `json:"MarketSegment,omitempty"`
+			Sector33      string   `json:"Sector33,omitempty"`
+			Sector17      string   `json:"Sector17,omitempty"`
 			GrowthMetrics
 			UpdatedAt string `json:"UpdatedAt"`
 		}
@@ -420,22 +424,27 @@ func startServer() {
 			var s Stock
 			var lastPrice float64
 			var priceDate sql.NullString
+			var marketSegment, sector33, sector17 string
 			if err := rows.Scan(&s.Code, &s.Name, &s.UpdatedAt,
 				&s.NetSales, &s.OperatingIncome, &s.NetIncome,
 				&s.TotalAssets, &s.NetAssets, &s.CurrentAssets,
 				&s.Liabilities, &s.CurrentLiabilities,
 				&s.CashAndDeposits, &s.SharesIssued,
+				&marketSegment, &sector33, &sector17,
 				&lastPrice, &priceDate); err != nil {
 				continue
 			}
 
 			os := OneilStock{
-				Code:      s.Code,
-				Name:      s.Name,
-				LastPrice: lastPrice,
-				NetSales:  s.NetSales,
-				NetIncome: s.NetIncome,
-				UpdatedAt: s.UpdatedAt,
+				Code:          s.Code,
+				Name:          s.Name,
+				LastPrice:     lastPrice,
+				NetSales:      s.NetSales,
+				NetIncome:     s.NetIncome,
+				MarketSegment: marketSegment,
+				Sector33:      sector33,
+				Sector17:      sector17,
+				UpdatedAt:     s.UpdatedAt,
 			}
 
 			m := calcMetrics(lastPrice, s.SharesIssued, s.NetIncome, s.NetAssets, s.TotalAssets, s.CurrentAssets, s.Liabilities)

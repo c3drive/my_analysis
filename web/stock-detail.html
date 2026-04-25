@@ -713,6 +713,27 @@
             if (stockInfo.PriceDate) {
                 document.getElementById('price-date').textContent = `最終更新: ${stockInfo.PriceDate}`;
             }
+
+            // 市場区分・業種バッジ
+            const badges = [];
+            if (stockInfo.MarketSegment) {
+                const segColor = stockInfo.MarketSegment.includes('プライム') ? '#00ff88' :
+                                 stockInfo.MarketSegment.includes('スタンダード') ? '#ffaa00' :
+                                 stockInfo.MarketSegment.includes('グロース') ? '#ff6b9d' : '#888';
+                badges.push(`<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.75rem;background:${segColor}22;color:${segColor};border:1px solid ${segColor}44;margin-right:6px;">${stockInfo.MarketSegment}</span>`);
+            }
+            if (stockInfo.Sector33) {
+                badges.push(`<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.75rem;background:rgba(0,217,255,0.1);color:#00d9ff;border:1px solid rgba(0,217,255,0.2);">${stockInfo.Sector33}</span>`);
+            }
+            // 既存のバッジを除去してから再追加（renderHeader 多重呼び出し時の重複防止）
+            document.querySelectorAll('.stock-badges').forEach(el => el.remove());
+            if (badges.length > 0) {
+                const badgeEl = document.createElement('div');
+                badgeEl.className = 'stock-badges';
+                badgeEl.style.cssText = 'margin-top:4px;';
+                badgeEl.innerHTML = badges.join('');
+                document.getElementById('price-date').after(badgeEl);
+            }
         }
 
         // ==============================================================
@@ -833,6 +854,75 @@
             }
 
             chart.timeScale().fitContent();
+
+            // 決算発表マーカー（決算短信・業績修正等）
+            addEarningsMarkers();
+        }
+
+        function addEarningsMarkers() {
+            if (!mainSeries || !disclosuresData || disclosuresData.length === 0) return;
+
+            const displayData = getDisplayData();
+            if (displayData.length === 0) return;
+            const dateSet = new Set(displayData.map(d => d.time));
+            // 週足モード対応: dateStr が直接マッチしない場合、その日以降の最初のキャンドル日にマップする
+            const sortedTimes = displayData.map(d => d.time).sort();
+            const mapToCandle = (dateStr) => {
+                if (dateSet.has(dateStr)) return dateStr;
+                // 日付以降で最も近い time を返す（週足の最終日にスナップ）
+                const found = sortedTimes.find(t => t >= dateStr);
+                if (!found) return null;
+                // ただし開示日から1週間以上離れたものは無関係とみなす
+                const diffDays = (new Date(found) - new Date(dateStr)) / 86400000;
+                return diffDays <= 7 ? found : null;
+            };
+
+            const earningsKeywords = ['決算', '業績', '配当', '修正', '四半期報告', '有価証券報告'];
+            const markers = [];
+
+            disclosuresData.forEach(d => {
+                const title = d.title || '';
+                if (!earningsKeywords.some(kw => title.includes(kw))) return;
+
+                // TDNET datetime → YYYY-MM-DD
+                const dateStr = (d.disclosure_datetime || '').substring(0, 10);
+                if (!dateStr || dateStr.length < 10) return;
+
+                // チャートの表示期間内のキャンドル日にマップ（週足対応）
+                const candleTime = mapToCandle(dateStr);
+                if (!candleTime) return;
+
+                // 色: 決算短信=緑、業績修正=オレンジ、配当=紫、その他=青
+                let color = '#00d9ff';
+                let text = '📋';
+                if (title.includes('決算短信')) { color = '#00ff88'; text = '📊'; }
+                else if (title.includes('修正')) { color = '#ffaa00'; text = '⚠'; }
+                else if (title.includes('配当')) { color = '#c084fc'; text = '💰'; }
+
+                markers.push({
+                    time: candleTime,
+                    position: 'aboveBar',
+                    color: color,
+                    shape: 'circle',
+                    text: text,
+                    size: 0.5,
+                });
+            });
+
+            // 同一日の重複を除去（最初のマーカーのみ保持）
+            const seen = new Set();
+            const uniqueMarkers = markers.filter(m => {
+                if (seen.has(m.time)) return false;
+                seen.add(m.time);
+                return true;
+            });
+
+            // 日付順にソート
+            uniqueMarkers.sort((a, b) => a.time.localeCompare(b.time));
+
+            if (uniqueMarkers.length > 0) {
+                mainSeries.setMarkers(uniqueMarkers);
+            }
         }
 
         // 移動平均計算

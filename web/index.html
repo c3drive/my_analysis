@@ -462,6 +462,9 @@
                         <input type="checkbox" id="filter-with-data">
                         <span>データありのみ</span>
                     </label>
+                    <select id="filter-sector" class="search-input" style="width:auto;min-width:140px;">
+                        <option value="">全業種</option>
+                    </select>
                     <button id="export-csv" class="export-btn">📥 CSV</button>
                 </div>
                 <span class="table-count" id="table-count"></span>
@@ -481,6 +484,8 @@
                             <th data-sort="EquityRatio" class="sortable">自己資本比率</th>
                             <th data-sort="NetNetRatio" class="sortable">ネットネット</th>
                             <th data-sort="RS" class="sortable">RS</th>
+                            <th data-sort="MarketSegment" class="sortable">市場</th>
+                            <th data-sort="Sector33" class="sortable">業種</th>
                             <th data-sort="NetSales" class="sortable">売上高（億円）</th>
                             <th data-sort="NetIncome" class="sortable">純利益（億円）</th>
                             <th data-sort="UpdatedAt" class="sortable">更新日</th>
@@ -572,6 +577,16 @@
             // イベントを設定
             setupSortEvents();
             setupFilterEvents();
+
+            // 業種プルダウンを生成
+            const sectorSelect = document.getElementById('filter-sector');
+            const sectors = [...new Set(stocks.map(s => s.Sector33).filter(Boolean))].sort();
+            sectors.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s;
+                opt.textContent = s;
+                sectorSelect.appendChild(opt);
+            });
 
             document.getElementById('loading').style.display = 'none';
             document.getElementById('data-container').style.display = 'block';
@@ -683,6 +698,13 @@
                 const sales = formatOku(stock.NetSales);
                 const netIncome = formatOku(stock.NetIncome);
 
+                // 市場区分の色分け
+                const segText = stock.MarketSegment || '-';
+                const segClass = segText.includes('プライム') ? 'value-good' :
+                                 segText.includes('スタンダード') ? 'value-ok' :
+                                 segText.includes('グロース') ? '' : 'no-data';
+                const sectorText = stock.Sector33 || '-';
+
                 tr.innerHTML = `
                     <td class="code-cell"><a class="code-link" href="stock-detail.html?code=${stock.Code}&from=index.html">${stock.Code}</a></td>
                     <td class="name-cell" title="${stock.Name}"><a class="code-link" href="stock-detail.html?code=${stock.Code}&from=index.html">${stock.Name}</a></td>
@@ -695,6 +717,8 @@
                     <td class="number-cell ${equityRatio.class}">${equityRatio.text}</td>
                     <td class="number-cell ${netNet.class}">${netNet.text}</td>
                     <td class="number-cell ${rs.class}">${rs.text}</td>
+                    <td class="number-cell ${segClass}" style="font-size:0.8rem;">${segText}</td>
+                    <td class="name-cell" title="${sectorText}" style="font-size:0.8rem;max-width:120px;">${sectorText}</td>
                     <td class="number-cell ${sales.class}">${sales.text}</td>
                     <td class="number-cell ${netIncome.class}">${netIncome.text}</td>
                     <td class="date-cell">${stock.UpdatedAt ? stock.UpdatedAt.substring(0, 10) : '-'}</td>
@@ -733,10 +757,12 @@
         // 検索・フィルター機能
         let searchTerm = '';
         let filterWithData = false;
+        let filterSector = '';
 
         function setupFilterEvents() {
             const searchInput = document.getElementById('search-input');
             const filterCheckbox = document.getElementById('filter-with-data');
+            const sectorSelect = document.getElementById('filter-sector');
             const exportBtn = document.getElementById('export-csv');
 
             searchInput.addEventListener('input', (e) => {
@@ -746,6 +772,11 @@
 
             filterCheckbox.addEventListener('change', (e) => {
                 filterWithData = e.target.checked;
+                sortAndRender();
+            });
+
+            sectorSelect.addEventListener('change', (e) => {
+                filterSector = e.target.value;
                 sortAndRender();
             });
 
@@ -766,6 +797,11 @@
                     if (!stock.NetSales && !stock.OperatingIncome && !stock.NetIncome) {
                         return false;
                     }
+                }
+
+                // 業種フィルター
+                if (filterSector && stock.Sector33 !== filterSector) {
+                    return false;
                 }
 
                 return true;

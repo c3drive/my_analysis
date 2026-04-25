@@ -487,11 +487,12 @@
                         <th>Q1 EPS%</th>
                         <th>Y0 EPS%</th>
                         <th>3Y CAGR%</th>
+                        <th>業種</th>
                     </tr>
                 </thead>
                 <tbody id="table-body">
                     <tr>
-                        <td colspan="16" class="loading">
+                        <td colspan="17" class="loading">
                             <div class="loading-spinner">⏳</div>
                             <p>データを読み込んでいます...</p>
                         </td>
@@ -634,7 +635,7 @@
             document.getElementById('db-status').textContent = 'データなし';
             document.getElementById('table-body').innerHTML = `
                 <tr>
-                    <td colspan="16" class="empty-state">
+                    <td colspan="17" class="empty-state">
                         <div class="empty-state-icon">📭</div>
                         <p>対象となる銘柄データがありません。</p>
                         <p>財務データを取得してください。</p>
