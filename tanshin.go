@@ -66,6 +66,7 @@ func parseTanshinForDate(targetDate string) {
 	parseStats := map[string]int{
 		"NetSales": 0, "OperatingIncome": 0, "NetIncome": 0, "TotalAssets": 0, "NetAssets": 0,
 	}
+	var partialFailures []string // 部分失敗 (売上はあるが利益0など) の銘柄リスト
 
 	for i, t := range targets {
 		fmt.Printf("  [%d/%d] %s %s ... ", i+1, len(targets), t.code, t.name)
@@ -132,6 +133,11 @@ func parseTanshinForDate(targetDate string) {
 			continue
 		}
 
+		// 部分失敗の検出 (売上はあるが純利益が 0)
+		if data.NetSales > 0 && data.NetIncome == 0 {
+			partialFailures = append(partialFailures, fmt.Sprintf("%s %s (純利益取得失敗)", t.code, t.name))
+		}
+
 		fmt.Printf("✅ 売上=%d 営利=%d 純利=%d\n", data.NetSales, data.OperatingIncome, data.NetIncome)
 		successCount++
 
@@ -144,6 +150,14 @@ func parseTanshinForDate(targetDate string) {
 	for _, key := range []string{"NetSales", "OperatingIncome", "NetIncome", "TotalAssets", "NetAssets"} {
 		rate := float64(parseStats[key]) / float64(len(targets)) * 100
 		fmt.Printf("  %s: %d/%d (%.1f%%)\n", key, parseStats[key], len(targets), rate)
+	}
+
+	// 部分失敗銘柄の表示 (デバッグ参考用)
+	if len(partialFailures) > 0 {
+		fmt.Printf("\n⚠️ 部分抽出失敗 %d件 (debug-tanshin で個別調査推奨):\n", len(partialFailures))
+		for _, p := range partialFailures {
+			fmt.Printf("  %s\n", p)
+		}
 	}
 }
 
@@ -225,20 +239,41 @@ func parseTanshinText(text string) FinancialData {
 	// 行頭の項目名 + 同一行内の最初の数値 を要求 (`[\s　]*` は半角/全角スペース)
 	// 行頭アンカー (?m) でマルチライン対応
 	d.NetSales = findFirst([]string{
+		// 通常の決算短信
 		`(?m)^[\s　]*売上高[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
-		`(?m)^[\s　]*営業収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		// 四半期短信
+		`(?m)^[\s　]*(?:第[一二三四1234]四半期)?売上高[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		// IFRS 適用企業
 		`(?m)^[\s　]*売上収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		// 鉄道、運輸、サービス業
+		`(?m)^[\s　]*営業収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		// 銀行・金融
 		`(?m)^[\s　]*経常収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		// 保険業
+		`(?m)^[\s　]*経常収入[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
 	}) * multiplier
 
 	d.OperatingIncome = findFirst([]string{
 		`(?m)^[\s　]*営業利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		// 「営業利益又は営業損失（△）」「営業利益(△は損失)」等の表記
+		`(?m)^[\s　]*営業利益(?:又は営業損失|\(△は損失\))?[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		// 銀行: 経常利益が事業利益の代理
+		`(?m)^[\s　]*経常利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		// IFRS 営業利益
+		`(?m)^[\s　]*事業利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
 		`(?m)^[\s　]*営業損失[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
 	}) * multiplier
 
 	d.NetIncome = findFirst([]string{
+		// 通期決算（最も一般的）
 		`(?m)^[\s　]*親会社株主に帰属する当期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		// 四半期決算
+		`(?m)^[\s　]*親会社株主に帰属する四半期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		// IFRS 通期
 		`(?m)^[\s　]*親会社の所有者に帰属する当期利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		// IFRS 四半期
+		`(?m)^[\s　]*親会社の所有者に帰属する四半期利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		// 単独決算など
 		`(?m)^[\s　]*当期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
 		`(?m)^[\s　]*四半期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
 	}) * multiplier
@@ -251,6 +286,8 @@ func parseTanshinText(text string) FinancialData {
 	d.NetAssets = findFirst([]string{
 		`(?m)^[\s　]*純資産[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
 		`(?m)^[\s　]*純資産合計[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		// IFRS
+		`(?m)^[\s　]*資本合計[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
 	}) * multiplier
 
 	// 妥当性チェック: 異常値の除外
