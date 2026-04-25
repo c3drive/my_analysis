@@ -175,13 +175,26 @@ func extractPDFText(pdfPath string) (string, error) {
 func parseTanshinText(text string) FinancialData {
 	var d FinancialData
 
-	// 単位判定 (「百万円」「千円」)
+	// 単位判定: 文書先頭(連結経営成績の前まで)で最初に見つかる単位を採用
+	// 「(百万円)」と「(千円)」が混在する場合、上部の表の単位を採用
 	multiplier := int64(1_000_000) // デフォルト百万円
-	if regexp.MustCompile(`\(千円\)`).MatchString(text) {
+	headerLen := len(text)
+	if headerLen > 4000 {
+		headerLen = 4000 // 先頭4000文字に制限 (連結経営成績の表ヘッダ範囲)
+	}
+	header := text[:headerLen]
+	yenIdx := regexp.MustCompile(`\(百万円\)`).FindStringIndex(header)
+	thouIdx := regexp.MustCompile(`\(千円\)`).FindStringIndex(header)
+	if yenIdx != nil && thouIdx != nil {
+		if thouIdx[0] < yenIdx[0] {
+			multiplier = 1_000
+		}
+	} else if thouIdx != nil {
 		multiplier = 1_000
 	}
 
 	// 主要項目の抽出ヘルパー
+	// 行末まで or 改行までの数字を厳格にマッチ (隣接行混入を防ぐ)
 	findFirst := func(patterns []string) int64 {
 		for _, p := range patterns {
 			rx := regexp.MustCompile(p)
@@ -196,39 +209,59 @@ func parseTanshinText(text string) FinancialData {
 		return 0
 	}
 
-	// 売上高 / 営業収益 / 売上収益(IFRS)
+	// 行頭の項目名 + 同一行内の最初の数値 を要求 (`[\s　]*` は半角/全角スペース)
+	// 行頭アンカー (?m) でマルチライン対応
 	d.NetSales = findFirst([]string{
-		`売上高\s*[*※()（）連結個別単独]*\s*([0-9,△▲\-]+)`,
-		`営業収益\s*[*※]*\s*([0-9,△▲\-]+)`,
-		`売上収益\s*[*※]*\s*([0-9,△▲\-]+)`,
+		`(?m)^[\s　]*売上高[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		`(?m)^[\s　]*営業収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		`(?m)^[\s　]*売上収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		`(?m)^[\s　]*経常収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
 	}) * multiplier
 
-	// 営業利益
 	d.OperatingIncome = findFirst([]string{
-		`営業利益\s*[*※]*\s*([0-9,△▲\-]+)`,
-		`営業損失\s*[*※]*\s*([0-9,△▲\-]+)`,
+		`(?m)^[\s　]*営業利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		`(?m)^[\s　]*営業損失[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
 	}) * multiplier
 
-	// 経常利益 (使ってないがログ用に取っておく場合は別途)
-
-	// 親会社株主に帰属する当期純利益 (連結) / 当期純利益 (単体)
 	d.NetIncome = findFirst([]string{
-		`親会社株主に帰属する当期純利益\s*[*※]*\s*([0-9,△▲\-]+)`,
-		`当期純利益\s*[*※]*\s*([0-9,△▲\-]+)`,
+		`(?m)^[\s　]*親会社株主に帰属する当期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		`(?m)^[\s　]*親会社の所有者に帰属する当期利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		`(?m)^[\s　]*当期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		`(?m)^[\s　]*四半期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
 	}) * multiplier
 
-	// 総資産 / 純資産 (BS は四半期決算短信では「期末純資産」「総資産」表記)
 	d.TotalAssets = findFirst([]string{
-		`総資産\s*[*※]*\s*([0-9,△▲\-]+)`,
-		`資産合計\s*[*※]*\s*([0-9,△▲\-]+)`,
+		`(?m)^[\s　]*総資産[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		`(?m)^[\s　]*資産合計[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
 	}) * multiplier
 
 	d.NetAssets = findFirst([]string{
-		`純資産\s*[*※]*\s*([0-9,△▲\-]+)`,
-		`純資産合計\s*[*※]*\s*([0-9,△▲\-]+)`,
+		`(?m)^[\s　]*純資産[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		`(?m)^[\s　]*純資産合計[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
 	}) * multiplier
 
+	// 妥当性チェック: 異常値の除外
+	// 1. 純利益の絶対値が売上の3倍を超える場合は誤抽出と判定 (純資産混入等)
+	if d.NetSales > 0 && abs64(d.NetIncome) > d.NetSales*3 {
+		d.NetIncome = 0
+	}
+	// 2. 営業利益の絶対値が売上の2倍を超える場合も同様
+	if d.NetSales > 0 && abs64(d.OperatingIncome) > d.NetSales*2 {
+		d.OperatingIncome = 0
+	}
+	// 3. 純資産が総資産より大きい場合は誤抽出
+	if d.TotalAssets > 0 && d.NetAssets > d.TotalAssets {
+		d.NetAssets = 0
+	}
+
 	return d
+}
+
+func abs64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // parseJPNumber は "1,234" "△500" "▲1,000" 等を int64 に変換
