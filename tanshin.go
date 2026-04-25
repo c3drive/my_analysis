@@ -88,14 +88,36 @@ func parseTanshinForDate(targetDate string) {
 
 		data := parseTanshinText(text)
 
-		// 既存 stocks テーブルの売上値と比較して妥当性チェック
-		// EDINET XBRL 由来の値が「正」なので、決算短信の売上が10倍以上ズレてたら誤抽出
+		// 既存 stocks テーブルの売上値と比較して妥当性チェック + 単位補正
+		// EDINET XBRL 由来の値が「正」なので、決算短信の値とズレてたら単位誤判定の可能性
 		var existingSales int64
 		db.QueryRow("SELECT COALESCE(net_sales, 0) FROM stocks WHERE code = ?", t.code).Scan(&existingSales)
 		if existingSales > 0 && data.NetSales > 0 {
 			ratio := float64(data.NetSales) / float64(existingSales)
+
+			// 比率がほぼ1000倍 (±10%) なら単位誤判定 → 1/1000 補正
+			if ratio > 900 && ratio < 1100 {
+				data.NetSales /= 1000
+				data.OperatingIncome /= 1000
+				data.NetIncome /= 1000
+				data.TotalAssets /= 1000
+				data.NetAssets /= 1000
+				fmt.Printf("🔧 単位補正 (1/1000): 比率%.1f → ", ratio)
+			}
+			// 比率がほぼ 1/1000 (0.0009〜0.0011) なら逆方向の単位誤判定 → 1000倍補正
+			if ratio < 0.0011 && ratio > 0.0009 {
+				data.NetSales *= 1000
+				data.OperatingIncome *= 1000
+				data.NetIncome *= 1000
+				data.TotalAssets *= 1000
+				data.NetAssets *= 1000
+				fmt.Printf("🔧 単位補正 (×1000): 比率%.4f → ", ratio)
+			}
+
+			// 補正後に再チェック
+			ratio = float64(data.NetSales) / float64(existingSales)
 			if ratio > 10 || ratio < 0.1 {
-				fmt.Printf("⚠️ 売上妥当性NG (既存%d vs 抽出%d, 比率%.1f) → スキップ\n", existingSales, data.NetSales, ratio)
+				fmt.Printf("⚠️ 売上妥当性NG (既存%d vs 抽出%d, 比率%.2f) → スキップ\n", existingSales, data.NetSales, ratio)
 				failCount++
 				continue
 			}
