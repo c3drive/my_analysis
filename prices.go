@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -78,6 +79,16 @@ func fetchStockPrices() {
 		}
 
 		prices, err := fetchPricesFromStooq(code)
+		// Stooqがブロック・空データを返した場合、Yahoo Finance にフォールバック
+		if err != nil || len(prices) == 0 {
+			yahooPrices, yerr := fetchPricesFromYahoo(code)
+			if yerr == nil && len(yahooPrices) > 0 {
+				fmt.Printf("  🔁 %s: Stooq失敗→Yahoo成功 ", code)
+				prices = yahooPrices
+				err = nil
+				consecutiveBlocks = 0
+			}
+		}
 		if err != nil {
 			fmt.Printf("  ❌ %s: %v\n", code, err)
 			errorCount++
@@ -92,7 +103,7 @@ func fetchStockPrices() {
 						consecutiveBlocks = 0
 						continue
 					}
-					fmt.Printf("\n⚠️ リトライ後も Stooq がブロックを継続しています\n")
+					fmt.Printf("\n⚠️ リトライ後も Stooq+Yahoo がブロックを継続しています\n")
 					fmt.Printf("   株価取得を中止します。既存の stock_price.db は保持されます。\n")
 					fmt.Printf("   しばらく時間をおいてから再実行してください（差分スキップで続きから再開します）。\n")
 					break
@@ -137,7 +148,16 @@ func fetchPricesFromStooq(code string) ([]StockPrice, error) {
 	url := fmt.Sprintf("https://stooq.com/q/d/l/?s=%s&i=d", stooqCode)
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("request error: %w", err)
+	}
+	// ボット判定回避のためブラウザ風ヘッダを付加
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/csv,text/plain,*/*")
+	req.Header.Set("Referer", "https://stooq.com/")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP error: %w", err)
 	}
@@ -200,6 +220,98 @@ func fetchPricesFromStooq(code string) ([]StockPrice, error) {
 		})
 	}
 
+	return prices, nil
+}
+
+// fetchPricesFromYahoo は Yahoo Finance から株価を取得（Stooqフォールバック用）
+// 4桁証券コード + .T で東証銘柄を指定。直近1年分の日足を返す
+func fetchPricesFromYahoo(code string) ([]StockPrice, error) {
+	if len(code) != 4 {
+		return nil, fmt.Errorf("yahoo: requires 4-digit code, got %s", code)
+	}
+	yahooSym := code + ".T"
+	end := time.Now().Unix()
+	start := end - 365*86400 // 1年前
+
+	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?period1=%d&period2=%d&interval=1d&events=history",
+		yahooSym, start, end)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("request error: %w", err)
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "application/json,text/javascript,*/*")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP status: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read error: %w", err)
+	}
+
+	var data struct {
+		Chart struct {
+			Result []struct {
+				Timestamp  []int64 `json:"timestamp"`
+				Indicators struct {
+					Quote []struct {
+						Open   []float64 `json:"open"`
+						High   []float64 `json:"high"`
+						Low    []float64 `json:"low"`
+						Close  []float64 `json:"close"`
+						Volume []int64   `json:"volume"`
+					} `json:"quote"`
+				} `json:"indicators"`
+			} `json:"result"`
+			Error any `json:"error"`
+		} `json:"chart"`
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, fmt.Errorf("json parse: %w", err)
+	}
+	if data.Chart.Error != nil {
+		return nil, fmt.Errorf("yahoo error: %v", data.Chart.Error)
+	}
+	if len(data.Chart.Result) == 0 || len(data.Chart.Result[0].Indicators.Quote) == 0 {
+		return nil, fmt.Errorf("no data")
+	}
+
+	r := data.Chart.Result[0]
+	q := r.Indicators.Quote[0]
+
+	var prices []StockPrice
+	for i, ts := range r.Timestamp {
+		if i >= len(q.Close) {
+			break
+		}
+		// null値（取引なし）はスキップ
+		if q.Close[i] == 0 {
+			continue
+		}
+		prices = append(prices, StockPrice{
+			Code:   code,
+			Date:   time.Unix(ts, 0).Format("2006-01-02"),
+			Open:   q.Open[i],
+			High:   q.High[i],
+			Low:    q.Low[i],
+			Close:  q.Close[i],
+			Volume: q.Volume[i],
+		})
+	}
+
+	if len(prices) == 0 {
+		return nil, fmt.Errorf("no valid prices")
+	}
 	return prices, nil
 }
 
