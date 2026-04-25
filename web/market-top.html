@@ -598,18 +598,30 @@
 <body>
     <!-- ナビゲーション -->
     <nav class="nav-bar" id="nav-bar">
-        <a href="/" class="back-btn">← ダッシュボード</a>
+        <a href="index.html" class="back-btn">← ダッシュボード</a>
         <span class="nav-breadcrumb">/ マーケット天井検出</span>
         <div style="flex:1"></div>
-        <a href="/net-net-value.html">ネットネット</a>
-        <a href="/oneil-screen.html">オニール</a>
-        <a href="/stock-detail.html">銘柄詳細</a>
+        <a href="net-net-value.html">ネットネット</a>
+        <a href="oneil-screen.html">オニール</a>
+        <a href="stock-detail.html">銘柄詳細</a>
     </nav>
 
     <div class="container">
         <div class="page-header">
             <h1 class="page-title">📉 マーケット天井検出</h1>
             <p class="page-subtitle">Distribution Day / Stalling Day 分析でマーケットの天井を可視化</p>
+        </div>
+
+        <div style="background:rgba(255,170,0,0.04);border:1px solid rgba(255,170,0,0.15);border-radius:12px;padding:18px 22px;margin-bottom:24px;color:#bbb;line-height:1.7;">
+            <div style="color:#ffaa00;font-weight:600;font-size:1rem;margin-bottom:8px;">📖 この画面でできること</div>
+            <p>オニールの市場分析手法。日経225などの指数を見て、「機関投資家の売り抜け（Distribution Day）」が短期間に積み重なるとマーケット天井のサイン。</p>
+            <p style="margin-top:8px;"><strong>2つのシグナル:</strong></p>
+            <ul style="margin-top:4px;padding-left:22px;">
+                <li><strong>D（Distribution Day）赤マーカー:</strong> 終値が前日比 -0.2% 以上下落、かつ出来高が前日より増加した日。機関投資家の売り抜けと解釈される。</li>
+                <li><strong>S（Stalling Day）緑マーカー:</strong> 価格は微増（-0.1〜+0.3%）だが出来高が増加した日。上昇のモメンタム喪失を示す。</li>
+            </ul>
+            <p style="margin-top:8px;"><strong>判断基準:</strong> 直近 25 営業日に D が 4本以上、または D + S が 6本以上溜まると <span style="color:#ffaa00">「注意期間」</span>（オレンジ背景）として表示される。注意期間中は新規買いを控え、保有株のリスク管理を強化する局面。</p>
+            <p style="margin-top:8px;"><strong>使い方:</strong> 左パネルでスライダーを動かしてパラメータをチューニング。チャート上ダブルクリックで水平ライン（価格目安）を引ける、右クリックで削除。</p>
         </div>
 
         <div class="main-layout">
@@ -864,6 +876,7 @@
             const select = document.getElementById('select-code');
             try {
                 const res = await fetch('/api/available-codes');
+                if (!res.ok) throw new Error('API not available');
                 const codes = await res.json();
 
                 select.innerHTML = '<option value="">-- 銘柄を選択 --</option>';
@@ -879,8 +892,22 @@
                     select.innerHTML = '<option value="">データがありません</option>';
                 }
             } catch (e) {
-                select.innerHTML = '<option value="">API接続エラー</option>';
-                console.error('Load codes error:', e);
+                // GitHub Pages 環境（API 無し）: stocks.json から銘柄リストを構築
+                try {
+                    const res = await fetch('stocks.json');
+                    const stocks = await res.json();
+                    select.innerHTML = '<option value="">-- 銘柄を選択 --</option>';
+                    stocks.forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s.Code;
+                        opt.textContent = `${s.Code} ${s.Name}`;
+                        select.appendChild(opt);
+                    });
+                    showStaticNotice();
+                } catch (e2) {
+                    select.innerHTML = '<option value="">データ読込失敗</option>';
+                    console.error('Load codes error:', e, e2);
+                }
             }
 
             select.addEventListener('change', () => {
@@ -888,6 +915,22 @@
                     loadPriceData(select.value);
                 }
             });
+        }
+
+        // GitHub Pages 環境では株価時系列 API が無いことを通知
+        function showStaticNotice() {
+            const container = document.getElementById('market-chart');
+            container.innerHTML = `
+                <div style="padding:40px;text-align:center;color:#888;line-height:1.8;">
+                    <div style="font-size:2.5rem;margin-bottom:12px;">⚠️</div>
+                    <div style="color:#e0e0e0;font-size:1.1rem;font-weight:600;margin-bottom:8px;">この画面は GitHub Pages では機能制限があります</div>
+                    <div>マーケット天井検出は株価の時系列データを必要とするため、ローカルサーバー環境でのみ完全動作します。</div>
+                    <div style="margin-top:14px;font-size:0.85rem;">
+                        ローカルで動かすには:<br>
+                        <code style="background:rgba(0,0,0,0.4);padding:4px 8px;border-radius:4px;display:inline-block;margin-top:6px;">docker compose run --rm -p 8080:8080 app task serve</code>
+                    </div>
+                </div>
+            `;
         }
 
         // ==============================================================

@@ -814,6 +814,19 @@
             </nav>
         </header>
 
+        <div style="background:rgba(0,255,136,0.04);border:1px solid rgba(0,255,136,0.15);border-radius:12px;padding:18px 22px;margin-bottom:24px;color:#bbb;line-height:1.7;">
+            <div style="color:#00ff88;font-weight:600;font-size:1rem;margin-bottom:8px;">📖 この画面でできること</div>
+            <p>清算価値（流動資産から総負債を引いた値 = NCAV）が時価総額を上回る、極端に割安な銘柄を発掘する。グレアムの古典的バリュー投資手法。</p>
+            <p style="margin-top:8px;"><strong>判断基準:</strong></p>
+            <ul style="margin-top:4px;padding-left:22px;">
+                <li><strong>ネットネット比率 ≥ 1.0</strong> → 💎 「超割安」。理論上、企業を買って即清算しても黒字になる水準。</li>
+                <li><strong>0.67 ≤ 比率 &lt; 1.0</strong> → グレアム基準クリア。十分な安全余裕がある。</li>
+                <li><strong>比率 &lt; 0.67</strong> → ネットネット銘柄ではない（通常の評価が必要）。</li>
+            </ul>
+            <p style="margin-top:8px;"><strong>使い方:</strong> 左サイドバーで資産係数（現金=1.0、棚卸=0.5 等）を調整し、保守的な「スペシャルPBR」を計算。タブ切替で散布図表示も可能（PBR と NN比率の分布）。</p>
+            <p style="margin-top:8px;color:#aaa;font-size:0.85rem;">⚠️ 注意: ネットネット銘柄は赤字や事業劣化が原因で割安になっていることが多い。スクリーニング後に事業内容と利益動向の精査が必須。</p>
+        </div>
+
         <div class="content-layout">
             <!-- Sidebar: Formula & Coefficients -->
             <div class="sidebar">
@@ -1437,8 +1450,8 @@
 
                 return `<tr>
                     <td class="rank-cell ${rankClass}">${rank}</td>
-                    <td class="code-cell"><a href="/stock-detail.html?code=${s.Code}&from=/net-net-value.html" style="color:#00d9ff;text-decoration:none;">${s.Code}</a></td>
-                    <td class="name-cell" title="${s.Name}"><a href="/stock-detail.html?code=${s.Code}&from=/net-net-value.html" style="color:inherit;text-decoration:none;">${s.Name}</a></td>
+                    <td class="code-cell"><a href="stock-detail.html?code=${s.Code}&from=net-net-value.html" style="color:#00d9ff;text-decoration:none;">${s.Code}</a></td>
+                    <td class="name-cell" title="${s.Name}"><a href="stock-detail.html?code=${s.Code}&from=net-net-value.html" style="color:inherit;text-decoration:none;">${s.Name}</a></td>
                     <td class="number-cell ${ratioClass}">${s.netNetRatio.toFixed(2)} ${badge}</td>
                     <td class="number-cell ${spbr.cls}">${spbr.text}</td>
                     <td class="number-cell" style="color: ${s.ncavPerShare >= 0 ? '#00d9ff' : '#ff6b6b'}">${ncavStr}</td>

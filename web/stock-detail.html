@@ -440,12 +440,12 @@
 <body>
     <!-- ナビゲーション -->
     <nav class="nav-bar" id="nav-bar">
-        <a href="/" class="back-btn" id="back-link">← ダッシュボード</a>
+        <a href="index.html" class="back-btn" id="back-link">← ダッシュボード</a>
         <span class="nav-breadcrumb">/ 銘柄詳細</span>
         <div style="flex:1"></div>
-        <a href="/net-net-value.html">ネットネット</a>
-        <a href="/oneil-screen.html">オニール</a>
-        <a href="/market-top.html">天井検出</a>
+        <a href="net-net-value.html">ネットネット</a>
+        <a href="oneil-screen.html">オニール</a>
+        <a href="market-top.html">天井検出</a>
     </nav>
 
     <div class="container">
@@ -460,6 +460,26 @@
                 <div class="price-date" id="price-date"></div>
             </div>
         </div>
+
+        <details style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:12px 18px;margin-bottom:18px;color:#aaa;">
+            <summary style="cursor:pointer;color:#e0e0e0;font-weight:600;">📖 各指標の見方</summary>
+            <div style="margin-top:10px;line-height:1.7;font-size:0.88rem;">
+                <p><strong>株価チャート:</strong> ローソク足/ライン/エリア切替。日足・週足対応。移動平均線（5/25/75/200日）を重ねて表示できる。</p>
+                <p style="margin-top:6px;"><strong>主要指標カード:</strong></p>
+                <ul style="padding-left:20px;margin-top:4px;">
+                    <li><strong>PER 15以下 / PBR 1以下</strong> = 割安水準。ROE 15% 以上 = 高収益。自己資本比率 50% 以上 = 財務健全。</li>
+                    <li><strong>ネットネット比率 1.0 以上</strong> = 超割安（清算価値 > 時価総額）</li>
+                    <li><strong>RS 80 以上</strong> = 株価が市場の上位 20% に入る強さ</li>
+                </ul>
+                <p style="margin-top:6px;"><strong>成長指標カード:</strong></p>
+                <ul style="padding-left:20px;margin-top:4px;">
+                    <li><strong>Q0 EPS YoY</strong>: 直近四半期の前年同期比。25% 以上でオニール基準クリア。</li>
+                    <li><strong>Y0 EPS YoY</strong>: 直近通期の前年比。20% 以上で優良成長。</li>
+                    <li><strong>3年 EPS CAGR</strong>: 3年平均成長率。15% 以上で長期優良。</li>
+                </ul>
+                <p style="margin-top:6px;"><strong>RS 推移チャート:</strong> 紫の面積グラフが RS 値の時系列。赤の点線が「RS=80（オニール基準）」のリファレンス。</p>
+            </div>
+        </details>
 
         <!-- チャートコントロール -->
         <div class="chart-controls" id="chart-controls">
@@ -502,6 +522,40 @@
             </div>
         </div>
 
+        <!-- 財務時系列チャート -->
+        <div class="financial-section" id="financials-charts-section" style="display:none;">
+            <h2 class="section-title">📈 財務時系列</h2>
+            <p style="color:#888;font-size:0.85rem;margin-bottom:14px;">
+                EDINETから取得した過去の通期（120）と四半期（140）報告書から、主要指標の推移を描画。Logスケール = 成長の比率変化、YoY = 前年同期比成長率。
+            </p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:18px;">
+                <div>
+                    <h3 style="color:#bbb;font-size:0.92rem;margin-bottom:6px;">📊 EPS 推移（Log）</h3>
+                    <div id="chart-eps-log" style="height:240px;background:rgba(0,0,0,0.2);border-radius:8px;"></div>
+                </div>
+                <div>
+                    <h3 style="color:#bbb;font-size:0.92rem;margin-bottom:6px;">📊 EPS YoY 成長率</h3>
+                    <div id="chart-eps-yoy" style="height:240px;background:rgba(0,0,0,0.2);border-radius:8px;"></div>
+                </div>
+                <div>
+                    <h3 style="color:#bbb;font-size:0.92rem;margin-bottom:6px;">💰 売上 推移（Log）</h3>
+                    <div id="chart-sales-log" style="height:240px;background:rgba(0,0,0,0.2);border-radius:8px;"></div>
+                </div>
+                <div>
+                    <h3 style="color:#bbb;font-size:0.92rem;margin-bottom:6px;">💰 売上 YoY 成長率</h3>
+                    <div id="chart-sales-yoy" style="height:240px;background:rgba(0,0,0,0.2);border-radius:8px;"></div>
+                </div>
+                <div>
+                    <h3 style="color:#bbb;font-size:0.92rem;margin-bottom:6px;">📈 ROE 推移（通期）</h3>
+                    <div id="chart-roe" style="height:240px;background:rgba(0,0,0,0.2);border-radius:8px;"></div>
+                </div>
+                <div>
+                    <h3 style="color:#bbb;font-size:0.92rem;margin-bottom:6px;">🏛️ 純資産・総資産</h3>
+                    <div id="chart-assets" style="height:240px;background:rgba(0,0,0,0.2);border-radius:8px;"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- RS推移チャート -->
         <div class="financial-section" id="rs-section" style="display:none;">
             <h2 class="section-title">📈 RS (Relative Strength) 推移</h2>
@@ -534,6 +588,7 @@
         let weeklyData = [];
         let rsData = [];
         let rsChart = null;
+        let financialsData = [];
         let stockInfo = null;
         let currentChartType = 'candlestick';
         let currentTimeframe = 'daily';
@@ -594,15 +649,17 @@
         // ==============================================================
         async function loadData() {
             try {
-                const [stocksRes, pricesRes, rsRes] = await Promise.all([
+                const [stocksRes, pricesRes, rsRes, financialsRes] = await Promise.all([
                     fetch('/api/stocks'),
                     fetch(`/api/prices/${stockCode}`),
-                    fetch(`/api/rs/${stockCode}`).catch(() => ({ json: () => [] }))
+                    fetch(`/api/rs/${stockCode}`).catch(() => ({ json: () => [] })),
+                    fetch(`/api/financials/${stockCode}`).catch(() => ({ json: () => [] }))
                 ]);
 
                 const allStocks = await stocksRes.json();
                 const prices = await pricesRes.json();
                 rsData = await rsRes.json() || [];
+                financialsData = await financialsRes.json() || [];
 
                 stockInfo = allStocks.find(s => s.Code === stockCode);
                 priceData = (prices || [])
@@ -622,6 +679,7 @@
                 renderMetrics();
                 renderFinancials();
                 renderRSChart();
+                renderFinancialsCharts();
             } catch (err) {
                 console.error('Data load error:', err);
                 document.getElementById('stock-name').textContent = 'データ取得エラー';
@@ -1079,6 +1137,152 @@
                 rsChart.applyOptions({ width: container.clientWidth });
             });
             resizeObserver.observe(container);
+        }
+
+        // ==============================================================
+        // 財務時系列チャート（6種）
+        // ==============================================================
+        function renderFinancialsCharts() {
+            if (!financialsData || financialsData.length === 0) {
+                document.getElementById('financials-charts-section').style.display = 'none';
+                return;
+            }
+            document.getElementById('financials-charts-section').style.display = '';
+
+            // 通期(120/130)と四半期(140)に分類
+            const annual = financialsData
+                .filter(d => d.doc_type === '120' || d.doc_type === '130')
+                .filter(d => d.shares_issued > 0)
+                .map(d => ({
+                    date: d.submission_date.substring(0, 10),
+                    eps: d.net_income / d.shares_issued,
+                    netSales: d.net_sales,
+                    netIncome: d.net_income,
+                    netAssets: d.net_assets,
+                    totalAssets: d.total_assets,
+                    roe: (d.net_income > 0 && d.net_assets > 0) ? (d.net_income / d.net_assets * 100) : null,
+                }))
+                .filter(d => d.date.length === 10)
+                .sort((a, b) => a.date.localeCompare(b.date));
+
+            const quarterly = financialsData
+                .filter(d => d.doc_type === '140')
+                .filter(d => d.shares_issued > 0)
+                .map(d => ({
+                    date: d.submission_date.substring(0, 10),
+                    eps: d.net_income / d.shares_issued,
+                    netSales: d.net_sales,
+                }))
+                .filter(d => d.date.length === 10)
+                .sort((a, b) => a.date.localeCompare(b.date));
+
+            // YoY計算（同期間: 約1年前データ ±45日範囲で最寄り）
+            function computeYoY(records, valueKey) {
+                return records.map(r => {
+                    const targetDate = new Date(r.date);
+                    targetDate.setFullYear(targetDate.getFullYear() - 1);
+                    const targetStr = targetDate.toISOString().slice(0, 10);
+
+                    let best = null, bestDiff = Infinity;
+                    records.forEach(p => {
+                        if (p.date >= r.date) return;
+                        const d = Math.abs(new Date(p.date) - new Date(targetStr));
+                        if (d < bestDiff && d < 45 * 86400000) {
+                            bestDiff = d; best = p;
+                        }
+                    });
+                    if (!best || best[valueKey] === 0) return null;
+                    const yoy = (r[valueKey] - best[valueKey]) / Math.abs(best[valueKey]) * 100;
+                    return { time: r.date, value: yoy };
+                }).filter(Boolean);
+            }
+
+            const baseChartOpts = {
+                layout: { background: { color: 'transparent' }, textColor: '#888', fontFamily: "'Inter',sans-serif", fontSize: 10 },
+                grid: {
+                    vertLines: { color: 'rgba(255,255,255,0.03)' },
+                    horzLines: { color: 'rgba(255,255,255,0.03)' },
+                },
+                timeScale: { borderColor: 'rgba(255,255,255,0.06)', timeVisible: false, rightOffset: 2 },
+                rightPriceScale: { borderColor: 'rgba(255,255,255,0.06)' },
+                handleScroll: { vertTouchDrag: false },
+                height: 240,
+            };
+
+            // 1. EPS Log
+            renderLineChart('chart-eps-log', annual.filter(d => d.eps > 0).map(d => ({ time: d.date, value: d.eps })),
+                { ...baseChartOpts, rightPriceScale: { ...baseChartOpts.rightPriceScale, mode: 1 /* Logarithmic */ } },
+                { color: '#00d9ff', lineWidth: 2, priceFormat: { type: 'custom', formatter: v => v.toFixed(0) + '円' } }
+            );
+
+            // 2. EPS YoY
+            renderBarChart('chart-eps-yoy', computeYoY(annual, 'eps'), baseChartOpts);
+
+            // 3. 売上 Log
+            renderLineChart('chart-sales-log', annual.filter(d => d.netSales > 0).map(d => ({ time: d.date, value: d.netSales / 1e8 })),
+                { ...baseChartOpts, rightPriceScale: { ...baseChartOpts.rightPriceScale, mode: 1 } },
+                { color: '#00ff88', lineWidth: 2, priceFormat: { type: 'custom', formatter: v => v.toFixed(0) + '億' } }
+            );
+
+            // 4. 売上 YoY
+            renderBarChart('chart-sales-yoy', computeYoY(annual, 'netSales'), baseChartOpts);
+
+            // 5. ROE 推移
+            renderLineChart('chart-roe', annual.filter(d => d.roe != null).map(d => ({ time: d.date, value: d.roe })),
+                baseChartOpts,
+                { color: '#ff6b9d', lineWidth: 2, priceFormat: { type: 'custom', formatter: v => v.toFixed(1) + '%' } }
+            );
+
+            // 6. 純資産・総資産
+            const assetContainer = document.getElementById('chart-assets');
+            assetContainer.innerHTML = '';
+            const assetChart = LightweightCharts.createChart(assetContainer, baseChartOpts);
+            const totalSeries = assetChart.addSeries(LightweightCharts.LineSeries, {
+                color: '#ffaa00', lineWidth: 2,
+                priceFormat: { type: 'custom', formatter: v => v.toFixed(0) + '億' }
+            });
+            const netSeries = assetChart.addSeries(LightweightCharts.LineSeries, {
+                color: '#00d9ff', lineWidth: 2,
+                priceFormat: { type: 'custom', formatter: v => v.toFixed(0) + '億' }
+            });
+            totalSeries.setData(annual.filter(d => d.totalAssets > 0).map(d => ({ time: d.date, value: d.totalAssets / 1e8 })));
+            netSeries.setData(annual.filter(d => d.netAssets > 0).map(d => ({ time: d.date, value: d.netAssets / 1e8 })));
+            assetChart.timeScale().fitContent();
+            new ResizeObserver(() => assetChart.applyOptions({ width: assetContainer.clientWidth })).observe(assetContainer);
+        }
+
+        function renderLineChart(elementId, data, chartOpts, seriesOpts) {
+            const container = document.getElementById(elementId);
+            container.innerHTML = '';
+            if (data.length === 0) {
+                container.innerHTML = '<div style="padding:80px 20px;text-align:center;color:#666;font-size:0.85rem;">データなし</div>';
+                return;
+            }
+            const chart = LightweightCharts.createChart(container, chartOpts);
+            const series = chart.addSeries(LightweightCharts.LineSeries, seriesOpts);
+            series.setData(data);
+            chart.timeScale().fitContent();
+            new ResizeObserver(() => chart.applyOptions({ width: container.clientWidth })).observe(container);
+        }
+
+        function renderBarChart(elementId, data, chartOpts) {
+            const container = document.getElementById(elementId);
+            container.innerHTML = '';
+            if (data.length === 0) {
+                container.innerHTML = '<div style="padding:80px 20px;text-align:center;color:#666;font-size:0.85rem;">データなし</div>';
+                return;
+            }
+            const chart = LightweightCharts.createChart(container, chartOpts);
+            const series = chart.addSeries(LightweightCharts.HistogramSeries, {
+                priceFormat: { type: 'custom', formatter: v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%' },
+            });
+            series.setData(data.map(d => ({
+                time: d.time,
+                value: d.value,
+                color: d.value >= 0 ? '#00ff88' : '#ff4466',
+            })));
+            chart.timeScale().fitContent();
+            new ResizeObserver(() => chart.applyOptions({ width: container.clientWidth })).observe(container);
         }
 
         // ==============================================================

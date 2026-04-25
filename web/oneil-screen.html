@@ -389,10 +389,16 @@
         </header>
 
         <div class="info-box">
-            <h2>📖 スコアリング基準</h2>
+            <h2>📖 この画面でできること</h2>
             <p>
-                各銘柄を以下の基準でスコアリングし、総合評価でランキングしています。
-                高ROE、低PER、低PBR、高自己資本比率の銘柄が上位にランクインします。
+                ウィリアム・オニールが提唱した <strong>CAN-SLIM 手法</strong>（年次/四半期 EPS 成長、相対力 RS、機関投資家の関心など）に基づく成長株スクリーニング。
+                高 ROE・低 PER・低 PBR・高自己資本比率に加え、<strong>四半期 EPS 成長率（Q0/Q1）</strong> と <strong>3年 EPS CAGR</strong> をスコアに反映している。
+            </p>
+            <p style="margin-top:10px;">
+                <strong>使い方:</strong> フィルタで条件を絞り、ソートで並び替え。各行をクリックで銘柄詳細へ遷移する。
+            </p>
+            <p style="margin-top:10px;">
+                <strong>有望銘柄の目安:</strong> Q0 EPS% ≥ 25、RS ≥ 80、ROE ≥ 17%、自己資本率 ≥ 40%、PBR ≤ 3 を全て満たす銘柄が「成長株候補」とされる。スコアが 100 点を超えるものは特に注目に値する。
             </p>
         </div>
 
@@ -556,7 +562,9 @@
 
                     const dates = stocksData
                         .filter(s => s.UpdatedAt)
-                        .map(s => s.UpdatedAt.substring(0, 10));
+                        .map(s => s.UpdatedAt.substring(0, 10))
+                        .sort()
+                        .reverse();
                     if (dates.length > 0) {
                         document.getElementById('last-update').textContent = dates[0];
                     }
