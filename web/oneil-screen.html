@@ -451,6 +451,19 @@
                 <input type="number" id="filter-q0eps" value="0" step="5">
             </div>
             <div class="filter-group">
+                <label>市場区分</label>
+                <select id="filter-segment">
+                    <option value="">全市場</option>
+                    <option value="プライム">プライム</option>
+                    <option value="スタンダード">スタンダード</option>
+                    <option value="グロース">グロース</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>業種</label>
+                <select id="filter-sector"><option value="">全業種</option></select>
+            </div>
+            <div class="filter-group">
                 <label>並び替え</label>
                 <select id="sort-by">
                     <option value="score">スコア</option>
@@ -492,7 +505,7 @@
                 </thead>
                 <tbody id="table-body">
                     <tr>
-                        <td colspan="17" class="loading">
+                        <td colspan="18" class="loading">
                             <div class="loading-spinner">⏳</div>
                             <p>データを読み込んでいます...</p>
                         </td>
@@ -619,6 +632,16 @@
                         document.getElementById('last-update').textContent = dates[0];
                     }
 
+                    // 業種プルダウンを動的生成
+                    const sectorSelect = document.getElementById('filter-sector');
+                    const sectors = [...new Set(allStocksData.map(s => s.Sector33).filter(Boolean))].sort();
+                    sectors.forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s;
+                        opt.textContent = s;
+                        sectorSelect.appendChild(opt);
+                    });
+
                     buildParamGrid();
                     recalcScores();
                     applyFilters();
@@ -635,7 +658,7 @@
             document.getElementById('db-status').textContent = 'データなし';
             document.getElementById('table-body').innerHTML = `
                 <tr>
-                    <td colspan="17" class="empty-state">
+                    <td colspan="18" class="empty-state">
                         <div class="empty-state-icon">📭</div>
                         <p>対象となる銘柄データがありません。</p>
                         <p>財務データを取得してください。</p>
@@ -747,6 +770,7 @@
                 const y0eps = formatGrowth(stock.Y0EPSYoY, 20);
                 const cagr = formatGrowth(stock.EPS3YCAGR, 15);
 
+                const sectorText = stock.Sector33 || '-';
                 tr.innerHTML = `
                     <td class="rank-cell ${getRankClass(rank)}">${rank}</td>
                     <td class="score-cell ${getScoreClass(stock.Score)}">${stock.Score.toFixed(0)}</td>
@@ -764,6 +788,7 @@
                     <td class="number-cell ${q1eps.class}">${q1eps.text}</td>
                     <td class="number-cell ${y0eps.class}">${y0eps.text}</td>
                     <td class="number-cell ${cagr.class}">${cagr.text}</td>
+                    <td class="name-cell" title="${sectorText}" style="font-size:0.78rem;max-width:120px;color:#888;">${sectorText}</td>
                 `;
                 tr.addEventListener('click', () => {
                     window.location.href = `stock-detail.html?code=${stock.Code}&from=oneil-screen.html`;
@@ -779,6 +804,8 @@
             const maxPER = parseFloat(document.getElementById('filter-per').value) || 999;
             const minEquity = parseFloat(document.getElementById('filter-equity').value) || 0;
             const minQ0EPS = parseFloat(document.getElementById('filter-q0eps').value) || 0;
+            const segment = document.getElementById('filter-segment').value;
+            const sector = document.getElementById('filter-sector').value;
             const sortBy = document.getElementById('sort-by').value;
 
             let filtered = allStocksData.filter(s => {
@@ -787,6 +814,8 @@
                 if (maxPER < 999 && s.PER && s.PER > maxPER) return false;
                 if (minEquity > 0 && (!s.EquityRatio || s.EquityRatio < minEquity)) return false;
                 if (minQ0EPS > 0 && (s.Q0EPSYoY == null || s.Q0EPSYoY < minQ0EPS)) return false;
+                if (segment && (!s.MarketSegment || !s.MarketSegment.includes(segment))) return false;
+                if (sector && s.Sector33 !== sector) return false;
                 return true;
             });
 
