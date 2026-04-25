@@ -561,6 +561,12 @@
             <h2 class="section-title">📈 RS (Relative Strength) 推移</h2>
             <div id="rs-chart" style="height:250px;border-radius:8px;overflow:hidden;"></div>
         </div>
+
+        <!-- TDNET 最近の適時開示 -->
+        <div class="financial-section" id="disclosures-section" style="display:none;">
+            <h2 class="section-title">📰 最近の適時開示 (TDNET)</h2>
+            <div id="disclosures-list" style="display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto;"></div>
+        </div>
     </div>
 
     <script>
@@ -589,6 +595,7 @@
         let rsData = [];
         let rsChart = null;
         let financialsData = [];
+        let disclosuresData = [];
         let stockInfo = null;
         let currentChartType = 'candlestick';
         let currentTimeframe = 'daily';
@@ -649,17 +656,19 @@
         // ==============================================================
         async function loadData() {
             try {
-                const [stocksRes, pricesRes, rsRes, financialsRes] = await Promise.all([
+                const [stocksRes, pricesRes, rsRes, financialsRes, disclosuresRes] = await Promise.all([
                     fetch('/api/stocks'),
                     fetch(`/api/prices/${stockCode}`),
                     fetch(`/api/rs/${stockCode}`).catch(() => ({ json: () => [] })),
-                    fetch(`/api/financials/${stockCode}`).catch(() => ({ json: () => [] }))
+                    fetch(`/api/financials/${stockCode}`).catch(() => ({ json: () => [] })),
+                    fetch(`/api/disclosures/${stockCode}`).catch(() => ({ json: () => [] }))
                 ]);
 
                 const allStocks = await stocksRes.json();
                 const prices = await pricesRes.json();
                 rsData = await rsRes.json() || [];
                 financialsData = await financialsRes.json() || [];
+                disclosuresData = await disclosuresRes.json() || [];
 
                 stockInfo = allStocks.find(s => s.Code === stockCode);
                 priceData = (prices || [])
@@ -680,6 +689,7 @@
                 renderFinancials();
                 renderRSChart();
                 renderFinancialsCharts();
+                renderDisclosures();
             } catch (err) {
                 console.error('Data load error:', err);
                 document.getElementById('stock-name').textContent = 'データ取得エラー';
@@ -1283,6 +1293,35 @@
             })));
             chart.timeScale().fitContent();
             new ResizeObserver(() => chart.applyOptions({ width: container.clientWidth })).observe(container);
+        }
+
+        // ==============================================================
+        // TDNET 適時開示
+        // ==============================================================
+        function renderDisclosures() {
+            if (!disclosuresData || disclosuresData.length === 0) {
+                document.getElementById('disclosures-section').style.display = 'none';
+                return;
+            }
+            document.getElementById('disclosures-section').style.display = '';
+
+            const list = document.getElementById('disclosures-list');
+            list.innerHTML = disclosuresData.map(d => {
+                const isEarnings = /決算|短信|業績/.test(d.title);
+                const accent = isEarnings ? '#00ff88' : '#888';
+                const pdfLink = d.pdf_url
+                    ? `<a href="${d.pdf_url}" target="_blank" rel="noopener noreferrer" style="color:#00d9ff;text-decoration:none;font-size:0.78rem;margin-left:8px;">📄 PDF</a>`
+                    : '';
+                return `
+                    <div style="background:rgba(0,0,0,0.2);border-left:3px solid ${accent};border-radius:4px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="color:#888;font-size:0.7rem;margin-bottom:2px;">${d.disclosure_datetime}${d.doc_category ? ' · ' + d.doc_category : ''}</div>
+                            <div style="color:#e0e0e0;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.title}</div>
+                        </div>
+                        ${pdfLink}
+                    </div>
+                `;
+            }).join('');
         }
 
         // ==============================================================

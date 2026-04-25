@@ -94,6 +94,24 @@ func initXbrlDB() (*sql.DB, error) {
 		log.Printf("⚠️ stock_financials table: %v", err)
 	}
 
+	// TDNET 適時開示情報テーブル
+	_, err = db.Exec(`
+	CREATE TABLE IF NOT EXISTS tdnet_disclosures (
+		code TEXT NOT NULL,
+		disclosure_datetime TEXT NOT NULL,
+		name TEXT,
+		title TEXT,
+		doc_category TEXT,
+		pdf_url TEXT,
+		PRIMARY KEY (code, disclosure_datetime, title)
+	);
+	CREATE INDEX IF NOT EXISTS idx_tdnet_code ON tdnet_disclosures(code);
+	CREATE INDEX IF NOT EXISTS idx_tdnet_datetime ON tdnet_disclosures(disclosure_datetime);
+	`)
+	if err != nil {
+		log.Printf("⚠️ tdnet_disclosures table: %v", err)
+	}
+
 	return db, nil
 }
 

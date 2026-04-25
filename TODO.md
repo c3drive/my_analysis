@@ -11,9 +11,16 @@
 > **方針**: S3は使わず、GitHub Releases + GitHub Pages でシンプルに構成
 
 ### 0. データソース拡張
-- [ ] **TDNET対応** ← 現在はEDINETのみ
-  - 適時開示情報の取得
-  - 決算発表日の特定
+- [x] **TDNET対応 (段階1: メタデータ)** ✅
+  - [x] 適時開示メタデータの取得（日付・コード・会社名・表題・PDF URL）
+  - [x] tdnet_disclosures テーブル
+  - [x] -mode=fetch-tdnet -date=YYYY-MM-DD
+  - [x] /api/disclosures/{code} エンドポイント
+  - [x] 銘柄詳細に「最近の適時開示」セクション
+  - 制約: TDNET 公式サイトは過去31日分のみ。古いデータはバックフィル不可
+- [ ] **TDNET対応 (段階2: PDF パース)** — 決算短信PDFから財務データ抽出（中〜大規模）
+- [ ] **決算発表日の特定** — 段階1のデータをベースに「決算」タイトルの開示日を抽出
+- [ ] **chart 上の決算発表期間ハイライト** — 決算発表日特定が前提
 
 ### 1. ストレージ構成（GitHub Releases）
 - [x] SQLiteファイルをGitHub Releasesにアップロード（daily-update.yml）

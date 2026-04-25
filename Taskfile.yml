@@ -37,6 +37,17 @@ tasks:
     cmds:
       - go run . -mode=test-parse
 
+  # TDNET 適時開示の取得（注: 過去31日分のみ取得可能）
+  fetch-tdnet:
+    desc: "TDNET 適時開示メタデータの取得 (DATE=YYYY-MM-DD で日付指定、デフォルトは今日)"
+    cmds:
+      - |
+        if [ -n "{{.DATE}}" ]; then
+          go run . -mode=fetch-tdnet -date={{.DATE}}
+        else
+          go run . -mode=fetch-tdnet
+        fi
+
   # 日次更新シミュレーション
   daily-update:
     cmds:

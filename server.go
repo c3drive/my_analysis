@@ -607,6 +607,55 @@ func startServer() {
 		json.NewEncoder(w).Encode(points)
 	})
 
+	// 個別銘柄の TDNET 適時開示一覧API
+	http.HandleFunc("/api/disclosures/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		code := strings.TrimPrefix(r.URL.Path, "/api/disclosures/")
+		if code == "" {
+			http.Error(w, "code required", http.StatusBadRequest)
+			return
+		}
+
+		db, err := openServerDB()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer db.Close()
+
+		type Disclosure struct {
+			DisclosureDateTime string `json:"disclosure_datetime"`
+			Title              string `json:"title"`
+			DocCategory        string `json:"doc_category"`
+			PdfURL             string `json:"pdf_url"`
+		}
+
+		rows, err := db.Query(`
+			SELECT disclosure_datetime, COALESCE(title,''), COALESCE(doc_category,''), COALESCE(pdf_url,'')
+			FROM tdnet_disclosures
+			WHERE code = ?
+			ORDER BY disclosure_datetime DESC
+			LIMIT 50`, code)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode([]Disclosure{})
+			return
+		}
+		defer rows.Close()
+
+		var items []Disclosure
+		for rows.Next() {
+			var d Disclosure
+			if err := rows.Scan(&d.DisclosureDateTime, &d.Title, &d.DocCategory, &d.PdfURL); err != nil {
+				continue
+			}
+			items = append(items, d)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(items)
+	})
+
 	// 市場指数データAPI（市場天井検出用）
 	http.HandleFunc("/api/market-index/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
