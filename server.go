@@ -62,6 +62,7 @@ func startServer() {
 				   COALESCE(s.investment_securities, 0), COALESCE(s.securities, 0),
 				   COALESCE(s.accounts_receivable, 0), COALESCE(s.inventories, 0),
 				   COALESCE(s.non_current_liabilities, 0), COALESCE(s.shareholders_equity, 0),
+				   COALESCE(s.market_segment, ''), COALESCE(s.sector_33, ''), COALESCE(s.sector_17, ''),
 				   COALESCE(p.close, 0) as last_price,
 				   p.date as price_date
 			FROM stocks s
@@ -122,6 +123,7 @@ func startServer() {
 				&s.InvestmentSecurities, &s.Securities,
 				&s.AccountsReceivable, &s.Inventories,
 				&s.NonCurrentLiabilities, &s.ShareholdersEquity,
+				&s.MarketSegment, &s.Sector33, &s.Sector17,
 				&s.LastPrice, &priceDate); err != nil {
 				log.Printf("⚠️ Scan error: %v", err)
 				continue
@@ -768,6 +770,7 @@ func exportJSON() {
 			   COALESCE(s.investment_securities, 0), COALESCE(s.securities, 0),
 			   COALESCE(s.accounts_receivable, 0), COALESCE(s.inventories, 0),
 			   COALESCE(s.non_current_liabilities, 0), COALESCE(s.shareholders_equity, 0),
+			   COALESCE(s.market_segment, ''), COALESCE(s.sector_33, ''), COALESCE(s.sector_17, ''),
 			   COALESCE(p.close, 0) as last_price,
 			   p.date as price_date
 		FROM stocks s
@@ -827,6 +830,7 @@ func exportJSON() {
 			&s.InvestmentSecurities, &s.Securities,
 			&s.AccountsReceivable, &s.Inventories,
 			&s.NonCurrentLiabilities, &s.ShareholdersEquity,
+			&s.MarketSegment, &s.Sector33, &s.Sector17,
 			&s.LastPrice, &priceDate); err != nil {
 			log.Printf("⚠️ Scan error: %v", err)
 			continue

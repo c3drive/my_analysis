@@ -48,6 +48,17 @@ tasks:
           go run . -mode=fetch-tdnet
         fi
 
+  # JPX 上場銘柄一覧の取込
+  # 1. https://www.jpx.co.jp/markets/statistics-equities/misc/01.html から data_j.xls をダウンロード
+  # 2. Excel/Numbers で UTF-8 CSV として保存 (例: data/jpx_listed.csv)
+  # 3. task import-jpx FILE=data/jpx_listed.csv
+  import-jpx:
+    desc: "JPX 上場銘柄一覧 CSV の取込 (FILE=path/to/jpx.csv 必須)"
+    cmds:
+      - go run . -mode=import-jpx -file={{.FILE}}
+    requires:
+      vars: [FILE]
+
   # 日次更新シミュレーション
   daily-update:
     cmds:

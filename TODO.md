@@ -117,8 +117,10 @@
 - [x] **四半期報告書（140）・半期報告書（160）のXBRL形式にも対応**
 
 **Phase 4: データカバレッジ拡大**
-- [ ] **日本株全銘柄リスト**を外部から取得（JPX証券コード一覧CSV）
-- [ ] **EDINET提出書類のない企業の基本情報を補完**
+- [x] **日本株全銘柄リスト**を外部から取得（JPX証券コード一覧CSV）✅ -mode=import-jpx
+  - JPX data_j.xls を CSV 化して取込
+  - market_segment / sector_33 / sector_17 を stocks テーブルに追加
+- [x] **EDINET提出書類のない企業の基本情報を補完** ✅ JPX 取込で新規銘柄が追加される
 - [x] **deploy-pages.yml の gen_json.go を最新の全カラムに対応** ✅ `-mode=export-json` に統合
   - インラインGoコード(180行)を廃止 → `go run main.go -mode=export-json` に置換
   - main.goの`calcMetrics()`を直接利用するため、列追加時の二重メンテが不要に
