@@ -402,38 +402,17 @@
             </p>
         </div>
 
-        <div class="criteria-grid">
-            <div class="criteria-card">
-                <h4>📈 ROE（自己資本利益率）</h4>
-                <ul>
-                    <li>20%超: <span class="points">+20点</span></li>
-                    <li>15%超: <span class="points">+15点</span></li>
-                    <li>10%超: <span class="points">+10点</span></li>
-                </ul>
+        <details style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px 22px;margin-bottom:24px;">
+            <summary style="cursor:pointer;color:#e0e0e0;font-weight:600;font-size:1rem;">⚙️ スコアパラメータをカスタマイズ</summary>
+            <p style="color:#888;font-size:0.85rem;margin:10px 0 16px 0;line-height:1.6;">
+                各指標の<strong>閾値</strong>（基準値）と<strong>ウェイト</strong>（点数）を調整してスコアを再計算できる。閾値を超えた銘柄にウェイト分が加点される（ベース 50点）。
+            </p>
+            <div id="param-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;"></div>
+            <div style="margin-top:14px;">
+                <button id="reset-params" style="padding:8px 16px;background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.3);color:#ff6b6b;border-radius:6px;cursor:pointer;font-size:0.85rem;">デフォルトに戻す</button>
+                <span style="color:#888;font-size:0.8rem;margin-left:14px;">変更は即座にスコアとランキングへ反映</span>
             </div>
-            <div class="criteria-card">
-                <h4>💰 PER（株価収益率）</h4>
-                <ul>
-                    <li>10倍未満: <span class="points">+15点</span></li>
-                    <li>15倍未満: <span class="points">+10点</span></li>
-                    <li>20倍未満: <span class="points">+5点</span></li>
-                </ul>
-            </div>
-            <div class="criteria-card">
-                <h4>📊 PBR（株価純資産倍率）</h4>
-                <ul>
-                    <li>1倍未満: <span class="points">+10点</span></li>
-                    <li>1.5倍未満: <span class="points">+5点</span></li>
-                </ul>
-            </div>
-            <div class="criteria-card">
-                <h4>🛡️ 自己資本比率</h4>
-                <ul>
-                    <li>50%超: <span class="points">+10点</span></li>
-                    <li>30%超: <span class="points">+5点</span></li>
-                </ul>
-            </div>
-        </div>
+        </details>
 
         <div class="status-bar">
             <div class="status-item">
@@ -526,6 +505,77 @@
         let stocksData = [];
         let allStocksData = [];
 
+        // スコアパラメータ定義
+        const DEFAULT_PARAMS = {
+            roe:    { label: '📈 ROE',           field: 'ROE',       op: '>=', threshold: 15, weight: 15, min: 0,  max: 30,  step: 1, unit: '%' },
+            per:    { label: '💰 PER',           field: 'PER',       op: '<=', threshold: 15, weight: 10, min: 5,  max: 50,  step: 1, unit: '倍' },
+            pbr:    { label: '📊 PBR',           field: 'PBR',       op: '<=', threshold: 1.5,weight: 8,  min: 0.3,max: 5,   step: 0.1,unit: '倍' },
+            equity: { label: '🛡️ 自己資本率',    field: 'EquityRatio',op:'>=', threshold: 40, weight: 7,  min: 0,  max: 100, step: 5, unit: '%' },
+            rs:     { label: '🚀 RS',            field: 'RS',        op: '>=', threshold: 80, weight: 15, min: 0,  max: 99,  step: 1, unit: '' },
+            q0eps:  { label: '📊 Q0 EPS YoY',    field: 'Q0EPSYoY',  op: '>=', threshold: 25, weight: 20, min: 0,  max: 100, step: 5, unit: '%' },
+            cagr:   { label: '🌱 3Y EPS CAGR',   field: 'EPS3YCAGR', op: '>=', threshold: 15, weight: 10, min: 0,  max: 50,  step: 1, unit: '%' },
+        };
+        let params = JSON.parse(JSON.stringify(DEFAULT_PARAMS));
+
+        function recalcScores() {
+            allStocksData = allStocksData.map(s => {
+                let score = 50; // ベース
+                Object.values(params).forEach(p => {
+                    const v = s[p.field];
+                    if (v == null || isNaN(v)) return;
+                    const passed = (p.op === '>=') ? (v >= p.threshold) : (v <= p.threshold);
+                    if (passed) score += p.weight;
+                });
+                return { ...s, Score: score };
+            });
+        }
+
+        function buildParamGrid() {
+            const grid = document.getElementById('param-grid');
+            grid.innerHTML = '';
+            Object.entries(params).forEach(([key, p]) => {
+                const card = document.createElement('div');
+                card.style.cssText = 'background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:12px;';
+                card.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+                        <span style="color:#e0e0e0;font-weight:600;font-size:0.9rem;">${p.label}</span>
+                        <span style="color:#888;font-size:0.75rem;">${p.op === '>=' ? '以上で加点' : '以下で加点'}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                        <span style="color:#888;font-size:0.75rem;width:38px;">閾値</span>
+                        <input type="range" id="th-${key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.threshold}" style="flex:1;">
+                        <span id="th-val-${key}" style="color:#00d9ff;font-size:0.85rem;width:60px;text-align:right;">${p.threshold}${p.unit}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="color:#888;font-size:0.75rem;width:38px;">点数</span>
+                        <input type="range" id="wt-${key}" min="0" max="40" step="1" value="${p.weight}" style="flex:1;">
+                        <span id="wt-val-${key}" style="color:#00ff88;font-size:0.85rem;width:60px;text-align:right;">+${p.weight}点</span>
+                    </div>
+                `;
+                grid.appendChild(card);
+
+                document.getElementById(`th-${key}`).addEventListener('input', e => {
+                    params[key].threshold = parseFloat(e.target.value);
+                    document.getElementById(`th-val-${key}`).textContent = `${params[key].threshold}${p.unit}`;
+                    recalcScores();
+                    applyFilters();
+                });
+                document.getElementById(`wt-${key}`).addEventListener('input', e => {
+                    params[key].weight = parseFloat(e.target.value);
+                    document.getElementById(`wt-val-${key}`).textContent = `+${params[key].weight}点`;
+                    recalcScores();
+                    applyFilters();
+                });
+            });
+        }
+
+        document.getElementById('reset-params').addEventListener('click', () => {
+            params = JSON.parse(JSON.stringify(DEFAULT_PARAMS));
+            buildParamGrid();
+            recalcScores();
+            applyFilters();
+        });
+
         async function loadData() {
             try {
                 document.getElementById('db-status').textContent = '取得中...';
@@ -554,13 +604,12 @@
                 }
 
                 allStocksData = data || [];
-                stocksData = allStocksData;
 
-                if (stocksData && stocksData.length > 0) {
+                if (allStocksData.length > 0) {
                     document.getElementById('db-status').textContent = '読込完了';
-                    document.getElementById('stock-count').textContent = stocksData.length + '社';
+                    document.getElementById('stock-count').textContent = allStocksData.length + '社';
 
-                    const dates = stocksData
+                    const dates = allStocksData
                         .filter(s => s.UpdatedAt)
                         .map(s => s.UpdatedAt.substring(0, 10))
                         .sort()
@@ -569,6 +618,8 @@
                         document.getElementById('last-update').textContent = dates[0];
                     }
 
+                    buildParamGrid();
+                    recalcScores();
                     applyFilters();
                 } else {
                     showEmptyState();
