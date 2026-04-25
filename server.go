@@ -97,15 +97,24 @@ func startServer() {
 		rsRows, rsErr := db.Query(`
 			SELECT code, rs_rank FROM rs_db.rs_scores rs1
 			WHERE date = (SELECT MAX(date) FROM rs_db.rs_scores rs2 WHERE rs2.code = rs1.code)`)
-		if rsErr == nil {
+		if rsErr != nil {
+			log.Printf("⚠️ /api/stocks RS query error: %v", rsErr)
+		} else {
 			defer rsRows.Close()
+			scanErrCount := 0
 			for rsRows.Next() {
 				var code string
 				var rank float64
-				if rsRows.Scan(&code, &rank) == nil {
-					rsMap[code] = rank
+				if err := rsRows.Scan(&code, &rank); err != nil {
+					scanErrCount++
+					if scanErrCount <= 3 {
+						log.Printf("⚠️ /api/stocks RS scan error: %v", err)
+					}
+					continue
 				}
+				rsMap[code] = rank
 			}
+			log.Printf("📊 /api/stocks RS map loaded: %d entries (scan errors: %d)", len(rsMap), scanErrCount)
 		}
 
 		// 成長指標用の時系列データを一括ロード
