@@ -241,20 +241,84 @@ func parseTanshinText(text string) FinancialData {
 	}) * multiplier
 
 	// 妥当性チェック: 異常値の除外
-	// 1. 純利益の絶対値が売上の3倍を超える場合は誤抽出と判定 (純資産混入等)
+	// 上限: 日本最大企業の年間売上 (Toyota 約45兆円) を考慮し 50兆円を上限
+	const maxSalesYen = 50_000_000_000_000
+
+	// 1. 売上が 50兆円超は誤抽出 (PDF表崩れによる別項目混入)
+	//    全フィールドを 0 にリセットして「抽出失敗」扱い
+	if d.NetSales > maxSalesYen {
+		return FinancialData{}
+	}
+	// 2. 総資産が 1000兆円超 (実質メガバンク級でも 400兆円) も同様
+	if d.TotalAssets > 1000_000_000_000_000 {
+		return FinancialData{}
+	}
+	// 3. 純利益の絶対値が売上の3倍を超える場合は誤抽出 (純資産混入等)
 	if d.NetSales > 0 && abs64(d.NetIncome) > d.NetSales*3 {
 		d.NetIncome = 0
 	}
-	// 2. 営業利益の絶対値が売上の2倍を超える場合も同様
+	// 4. 営業利益の絶対値が売上の2倍を超える場合も同様
 	if d.NetSales > 0 && abs64(d.OperatingIncome) > d.NetSales*2 {
 		d.OperatingIncome = 0
 	}
-	// 3. 純資産が総資産より大きい場合は誤抽出
+	// 5. 純資産が総資産より大きい場合は誤抽出
 	if d.TotalAssets > 0 && d.NetAssets > d.TotalAssets {
 		d.NetAssets = 0
 	}
 
 	return d
+}
+
+// debugTanshin は単一銘柄の決算短信PDFを取得し、テキスト抽出 + パース結果を表示する
+// 正規表現の調整やトラブルシュート用
+func debugTanshin(code, date string) {
+	if _, err := exec.LookPath("pdftotext"); err != nil {
+		log.Fatalf("pdftotext が必要です")
+	}
+
+	db, err := initXbrlDB()
+	if err != nil {
+		log.Fatalf("DB init: %v", err)
+	}
+	defer db.Close()
+
+	var url, title string
+	err = db.QueryRow(`
+		SELECT pdf_url, title FROM tdnet_disclosures
+		WHERE code = ? AND disclosure_datetime LIKE ? || '%' AND title LIKE '%決算短信%'
+		ORDER BY disclosure_datetime DESC LIMIT 1`, code, date).Scan(&url, &title)
+	if err != nil {
+		log.Fatalf("該当する決算短信が tdnet_disclosures にありません: %v", err)
+	}
+
+	fmt.Printf("📄 %s %s\n   URL: %s\n", code, title, url)
+
+	pdfPath, err := downloadPDF(url)
+	if err != nil {
+		log.Fatalf("DL失敗: %v", err)
+	}
+	defer os.Remove(pdfPath)
+
+	text, err := extractPDFText(pdfPath)
+	if err != nil {
+		log.Fatalf("抽出失敗: %v", err)
+	}
+
+	// テキスト先頭4000文字を出力
+	fmt.Println("\n--- 抽出テキスト (先頭4000文字) ---")
+	limit := len(text)
+	if limit > 4000 {
+		limit = 4000
+	}
+	fmt.Println(text[:limit])
+
+	fmt.Println("\n--- パース結果 ---")
+	d := parseTanshinText(text)
+	fmt.Printf("売上高:       %d 円 (%.2f 億円)\n", d.NetSales, float64(d.NetSales)/1e8)
+	fmt.Printf("営業利益:     %d 円 (%.2f 億円)\n", d.OperatingIncome, float64(d.OperatingIncome)/1e8)
+	fmt.Printf("純利益:       %d 円 (%.2f 億円)\n", d.NetIncome, float64(d.NetIncome)/1e8)
+	fmt.Printf("総資産:       %d 円 (%.2f 億円)\n", d.TotalAssets, float64(d.TotalAssets)/1e8)
+	fmt.Printf("純資産:       %d 円 (%.2f 億円)\n", d.NetAssets, float64(d.NetAssets)/1e8)
 }
 
 func abs64(v int64) int64 {
