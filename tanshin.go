@@ -257,12 +257,15 @@ func parseTanshinText(text string) FinancialData {
 	// 上限: 日本最大企業の年間売上 (Toyota 約45兆円) を考慮し 50兆円を上限
 	const maxSalesYen = 50_000_000_000_000
 
-	// 1. 売上が 50兆円超は誤抽出 (PDF表崩れによる別項目混入)
-	//    全フィールドを 0 にリセットして「抽出失敗」扱い
+	// 1. 売上が負の値は誤抽出 (前年比△XX% を誤読した典型例)
+	if d.NetSales < 0 {
+		return FinancialData{}
+	}
+	// 2. 売上が 50兆円超は誤抽出 (PDF表崩れによる別項目混入)
 	if d.NetSales > maxSalesYen {
 		return FinancialData{}
 	}
-	// 2. 総資産が 1000兆円超 (実質メガバンク級でも 400兆円) も同様
+	// 3. 総資産が 1000兆円超 (実質メガバンク級でも 400兆円) も同様
 	if d.TotalAssets > 1000_000_000_000_000 {
 		return FinancialData{}
 	}
