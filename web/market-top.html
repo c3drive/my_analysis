@@ -722,6 +722,16 @@
                         </div>
                         <input type="range" id="vol-inc" min="0" max="30" step="0.5" value="5.0">
                     </div>
+                    <div class="param-row" style="margin-top:8px;">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#bbb;font-size:0.82rem;">
+                            <input type="checkbox" id="vol-and" style="cursor:pointer;">
+                            <span>分配日にも平均出来高超え条件を AND 適用</span>
+                        </label>
+                        <div style="font-size:0.7rem;color:#666;margin-top:4px;line-height:1.4;">
+                            ON: 分配日 = 下落 AND 前日出来高超え AND Y日平均×(1+X%) 超え<br>
+                            OFF: 分配日 = 下落 AND 前日出来高超え（デフォルト）
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 注意期間パラメータ -->
@@ -853,6 +863,7 @@
             stallHigh: 0.30,
             volAvg: 25,
             volInc: 5.0,
+            volAnd: false,
             dangerDays: 25,
             dangerTotal: 6,
             dangerDist: 4,
@@ -1004,10 +1015,11 @@
                 const isHighVolume = d.volume > volThreshold;
                 const isAbovePrevVolume = prev ? d.volume >= prev.volume : false;
 
-                // 分配日判定: 下落 + 出来高が前日以上
+                // 分配日判定: 下落 + 出来高が前日以上 (オプションで平均超えAND)
                 const isDist = prev &&
                     changeRate <= params.distRate &&
-                    isAbovePrevVolume;
+                    isAbovePrevVolume &&
+                    (!params.volAnd || isHighVolume);
 
                 // ストーリング判定: 微変動 + 出来高増加
                 const isStall = prev &&
@@ -1474,11 +1486,27 @@
                     }, 200);
                 });
             });
+
+            // 出来高 AND 条件チェックボックス
+            const volAndCheckbox = document.getElementById('vol-and');
+            if (volAndCheckbox) {
+                volAndCheckbox.addEventListener('change', () => {
+                    params.volAnd = volAndCheckbox.checked;
+                    updateConditionText();
+                    if (rawPriceData.length > 0) {
+                        analyze();
+                        renderChart();
+                    }
+                });
+            }
         }
 
         function updateConditionText() {
+            const distAndVol = params.volAnd
+                ? ` AND 出来高 > ${params.volAvg}日平均×(1+${params.volInc.toFixed(1)}%)`
+                : '';
             document.getElementById('dist-condition').textContent =
-                `条件: 終値変化率 ≤ ${params.distRate.toFixed(2)}% AND 出来高 ≥ 前日`;
+                `条件: 終値変化率 ≤ ${params.distRate.toFixed(2)}% AND 出来高 ≥ 前日${distAndVol}`;
             document.getElementById('stall-condition').textContent =
                 `条件: ${params.stallLow.toFixed(2)}% ≤ 変化率 ≤ +${params.stallHigh.toFixed(2)}% AND 出来高 > ${params.volAvg}日平均×(1+${params.volInc.toFixed(1)}%)`;
         }

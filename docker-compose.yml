@@ -3,9 +3,11 @@ services:
     build: .
     volumes:
       - .:/app
+      - ${HOME}/.config/gh:/root/.config/gh  # ホストの gh 認証情報をマウント (upload-db タスク用)
     ports:
       - "8080:8080"  # ホストの8080をコンテナの8080に繋ぐ
     tty: true
     stdin_open: true
     environment:
       - EDINET_API_KEY=${EDINET_API_KEY:-}
+      - GH_TOKEN=${GH_TOKEN:-}
