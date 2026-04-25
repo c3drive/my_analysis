@@ -168,6 +168,12 @@ func initRsDB() (*sql.DB, error) {
 }
 
 // openServerDB はサーバー用に全DBをATTACHした接続を返す
+//
+// 重要: ATTACH DATABASE は SQLite の接続単位の操作。
+// database/sql の接続プールは複数接続を持ち得るため、ATTACHした接続と
+// 後続のクエリが別接続だと「no such table」エラーになる。
+// SetMaxOpenConns(1) + SetMaxIdleConns(1) でプールを1接続に固定し、
+// ATTACH が確実に効くようにする。
 func openServerDB() (*sql.DB, error) {
 	ensureDir()
 	// メインはxbrl.db
@@ -175,6 +181,10 @@ func openServerDB() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// 接続プールを1本に固定 (ATTACH を全クエリに効かせるため)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	// 株価DBをアタッチ
 	_, err = db.Exec(`ATTACH DATABASE './data/stock_price.db' AS price_db`)
