@@ -224,12 +224,11 @@ func extractPDFText(pdfPath string) (string, error) {
 func parseTanshinText(text string) FinancialData {
 	var d FinancialData
 
-	// 単位判定: 文書先頭(連結経営成績の前まで)で最初に見つかる単位を採用
-	// 「(百万円)」と「(千円)」が混在する場合、上部の表の単位を採用
+	// 単位判定: 連結経営成績表のヘッダ範囲(先頭6000文字)で最初に見つかる単位を採用
 	multiplier := int64(1_000_000) // デフォルト百万円
 	headerLen := len(text)
-	if headerLen > 4000 {
-		headerLen = 4000 // 先頭4000文字に制限 (連結経営成績の表ヘッダ範囲)
+	if headerLen > 6000 {
+		headerLen = 6000
 	}
 	header := text[:headerLen]
 	yenIdx := regexp.MustCompile(`\(百万円\)`).FindStringIndex(header)
@@ -240,6 +239,14 @@ func parseTanshinText(text string) FinancialData {
 		}
 	} else if thouIdx != nil {
 		multiplier = 1_000
+	}
+
+	// 優先方式: 「YYYY年X月期」で始まる行から数値列を抽出 (当期=最初の行)
+	// 多くの決算短信は「年X月期 売上 % 営利 % 経常/税引前 % 純利益 %」の4列パターン
+	if pdata := extractFromPeriodRow(text); pdata != nil {
+		d.NetSales = pdata.NetSales * multiplier
+		d.OperatingIncome = pdata.OperatingIncome * multiplier
+		d.NetIncome = pdata.NetIncome * multiplier
 	}
 
 	// 主要項目の抽出ヘルパー
@@ -260,45 +267,37 @@ func parseTanshinText(text string) FinancialData {
 
 	// 行頭の項目名 + 同一行内の最初の数値 を要求 (`[\s　]*` は半角/全角スペース)
 	// 行頭アンカー (?m) でマルチライン対応
-	d.NetSales = findFirst([]string{
-		// 通常の決算短信
-		`(?m)^[\s　]*売上高[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
-		// 四半期短信
-		`(?m)^[\s　]*(?:第[一二三四1234]四半期)?売上高[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
-		// IFRS 適用企業
-		`(?m)^[\s　]*売上収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
-		// 鉄道、運輸、サービス業
-		`(?m)^[\s　]*営業収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
-		// 銀行・金融
-		`(?m)^[\s　]*経常収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
-		// 保険業
-		`(?m)^[\s　]*経常収入[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
-	}) * multiplier
+	// 優先方式で取れなかった場合のフォールバック (項目名行頭マッチ)
+	if d.NetSales == 0 {
+		d.NetSales = findFirst([]string{
+			`(?m)^[\s　]*売上高[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+			`(?m)^[\s　]*売上収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+			`(?m)^[\s　]*営業収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+			`(?m)^[\s　]*経常収益[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+			`(?m)^[\s　]*経常収入[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
+		}) * multiplier
+	}
 
-	d.OperatingIncome = findFirst([]string{
-		`(?m)^[\s　]*営業利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
-		// 「営業利益又は営業損失（△）」「営業利益(△は損失)」等の表記
-		`(?m)^[\s　]*営業利益(?:又は営業損失|\(△は損失\))?[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
-		// 銀行: 経常利益が事業利益の代理
-		`(?m)^[\s　]*経常利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
-		// IFRS 営業利益
-		`(?m)^[\s　]*事業利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
-		`(?m)^[\s　]*営業損失[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
-	}) * multiplier
+	if d.OperatingIncome == 0 {
+		d.OperatingIncome = findFirst([]string{
+			`(?m)^[\s　]*営業利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+			`(?m)^[\s　]*調整後営業利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+			`(?m)^[\s　]*事業利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+			`(?m)^[\s　]*経常利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+			`(?m)^[\s　]*営業損失[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		}) * multiplier
+	}
 
-	d.NetIncome = findFirst([]string{
-		// 通期決算（最も一般的）
-		`(?m)^[\s　]*親会社株主に帰属する当期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
-		// 四半期決算
-		`(?m)^[\s　]*親会社株主に帰属する四半期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
-		// IFRS 通期
-		`(?m)^[\s　]*親会社の所有者に帰属する当期利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
-		// IFRS 四半期
-		`(?m)^[\s　]*親会社の所有者に帰属する四半期利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
-		// 単独決算など
-		`(?m)^[\s　]*当期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
-		`(?m)^[\s　]*四半期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
-	}) * multiplier
+	if d.NetIncome == 0 {
+		d.NetIncome = findFirst([]string{
+			`(?m)^[\s　]*親会社株主に帰属する当期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+			`(?m)^[\s　]*親会社株主に帰属する四半期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+			`(?m)^[\s　]*親会社の所有者に帰属する当期利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+			`(?m)^[\s　]*親会社の所有者に帰属する四半期利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+			`(?m)^[\s　]*当期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+			`(?m)^[\s　]*四半期純利益[^\n]*?[\s　]([0-9,△▲\-]{2,})`,
+		}) * multiplier
+	}
 
 	d.TotalAssets = findFirst([]string{
 		`(?m)^[\s　]*総資産[^\n]*?[\s　]([0-9,△▲\-]{4,})`,
@@ -401,6 +400,67 @@ func abs64(v int64) int64 {
 		return -v
 	}
 	return v
+}
+
+// extractFromPeriodRow は「YYYY年X月期 数値 % 数値 % ...」形式の連結業績表から当期データを抽出する
+// IFRS/日本基準の主要4列パターン (売上, 営利, 経常/税引前, 純利益) に対応
+// 戻り値の単位は「百万円」(乗算前)
+func extractFromPeriodRow(text string) *FinancialData {
+	// 期表示で始まる行 (当期 = 最初に出現)
+	// 例: " 2026年３月期  1,405,493  2.5 132,951  △8.3 124,226  △7.4 82,688  △9.9    73,193 △10.1"
+	rx := regexp.MustCompile(`(?m)^[\s　]*\d{4}年[\s０-９0-9]+月期[\s\S]*?$`)
+	loc := rx.FindStringIndex(text)
+	if loc == nil {
+		return nil
+	}
+	// マッチ箇所 + 次の200文字 (改行を含めて行を超える数値も拾う場合がある)
+	end := loc[1]
+	if end+50 < len(text) {
+		end += 50
+	}
+	line := text[loc[0]:end]
+	// 改行までで切る
+	if nl := strings.Index(line, "\n"); nl >= 0 {
+		line = line[:nl]
+	}
+
+	// 数値群を抽出
+	numRx := regexp.MustCompile(`[△▲\-]?[\d,]+(?:\.\d+)?`)
+	tokens := numRx.FindAllString(line, -1)
+
+	// 整数値のみ (パーセンテージは小数点を含むので除外)
+	var ints []int64
+	for _, t := range tokens {
+		if strings.Contains(t, ".") {
+			continue
+		}
+		v := parseJPNumber(t)
+		// 4桁未満は年表記の数字 (2026, 月) や小さすぎるので除外
+		if abs64(v) < 1000 {
+			continue
+		}
+		ints = append(ints, v)
+	}
+
+	if len(ints) == 0 {
+		return nil
+	}
+
+	d := &FinancialData{}
+	if len(ints) >= 1 {
+		d.NetSales = ints[0]
+	}
+	if len(ints) >= 2 {
+		d.OperatingIncome = ints[1]
+	}
+	// 純利益は4番目 (4列パターン: 売上, 営利, 経常/税引前, 純利益) または最後
+	if len(ints) >= 4 {
+		d.NetIncome = ints[3]
+	} else if len(ints) >= 3 {
+		// 3列パターン (銀行など): 売上, 営利相当, 純利益
+		d.NetIncome = ints[2]
+	}
+	return d
 }
 
 // parseJPNumber は "1,234" "△500" "▲1,000" 等を int64 に変換
