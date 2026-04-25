@@ -2,7 +2,7 @@
 
 **参考**: [kawasin73さんの記事](https://kawasin73.hatenablog.com/entry/2025/11/20/224346)
 
-**最終更新**: 2026-04-25
+**最終更新**: 2026-04-25（株価カバレッジ拡大・接続プール修正完了）
 
 ---
 
@@ -414,6 +414,30 @@
 
 ### 43. 銘柄詳細 市場区分・業種バッジ ✅ 完了
 - [x] ヘッダーに市場区分（色分けバッジ）と業種バッジを表示
+
+### 44. オニールスクリーニング 業種・市場フィルタ ✅ 完了
+- [x] 市場区分プルダウン（プライム/スタンダード/グロース）
+- [x] 業種プルダウン（Sector33 から動的生成）
+- [x] 業種列をテーブル末尾に追加
+
+## 🟠 株価データソース拡張（2026-04-25） ✅ 完了
+
+### 45. Stooq + Yahoo Finance フォールバック ✅ 完了
+- [x] Stooq に User-Agent / Referer / Accept ヘッダを追加（ブロック軽減）
+- [x] fetchPricesFromYahoo: query1.finance.yahoo.com/v8/finance/chart 実装
+- [x] Stooq 失敗時に Yahoo Finance へ自動フォールバック
+- [x] 株価カバレッジ: 490銘柄 → 3777銘柄 (90.0%) に大幅拡大
+- [x] RS 再計算で 3742 銘柄カバー
+
+## 🟠 接続プール障害修正（2026-04-25） ✅ 解決
+
+### 46. ATTACH DATABASE が API で見えない問題 ✅ 完了
+- [x] 症状: 銘柄詳細「データ取得エラー」、全銘柄 RS=null
+- [x] 原因: database/sql の接続プールが複数接続を持ち、ATTACH した接続と
+  SELECT する接続が別だったため `no such table: rs_db.rs_scores` 発生
+- [x] 修正: openServerDB で SetMaxOpenConns(1) + SetMaxIdleConns(1)
+- [x] 副作用のデッドロック修正: メインクエリ前に補助マップ（rsMap, financialsMap）
+  を完全ロードする順序に変更（/api/stocks, /api/oneil-ranking, exportJSON）
 
 ---
 
