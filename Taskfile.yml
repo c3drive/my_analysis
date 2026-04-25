@@ -48,6 +48,16 @@ tasks:
           go run . -mode=fetch-tdnet
         fi
 
+  # 決算短信PDFのパース (TDNETから取得した開示メタデータが前提)
+  # 1. task fetch-tdnet DATE=YYYY-MM-DD で開示一覧を取得
+  # 2. task parse-tanshin DATE=YYYY-MM-DD で当日分の決算短信PDFをパース
+  parse-tanshin:
+    desc: "TDNET決算短信PDFのパース (DATE=YYYY-MM-DD 必須、poppler-utils必要)"
+    cmds:
+      - go run . -mode=parse-tanshin -date={{.DATE}}
+    requires:
+      vars: [DATE]
+
   # JPX 上場銘柄一覧の取込
   # 1. https://www.jpx.co.jp/markets/statistics-equities/misc/01.html から data_j.xls をダウンロード
   # 2. Excel/Numbers で UTF-8 CSV として保存 (例: data/jpx_listed.csv)

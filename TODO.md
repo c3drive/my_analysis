@@ -18,9 +18,16 @@
   - [x] /api/disclosures/{code} エンドポイント
   - [x] 銘柄詳細に「最近の適時開示」セクション
   - 制約: TDNET 公式サイトは過去31日分のみ。古いデータはバックフィル不可
-- [ ] **TDNET対応 (段階2: PDF パース)** — 決算短信PDFから財務データ抽出（中〜大規模）
-- [ ] **決算発表日の特定** — 段階1のデータをベースに「決算」タイトルの開示日を抽出
-- [ ] **chart 上の決算発表期間ハイライト** — 決算発表日特定が前提
+- [x] **TDNET対応 (段階2: PDF パース)** ✅ 決算短信PDFから財務データ抽出
+  - [x] poppler-utils (pdftotext) を Dockerfile に追加
+  - [x] tanshin.go: PDF DL → pdftotext → 正規表現抽出
+  - [x] -mode=parse-tanshin -date=YYYY-MM-DD モード
+  - [x] 主要5項目 (売上高/営業利益/純利益/総資産/純資産) を抽出
+  - [x] stock_financials に doc_type='SHORT_REPORT' で保存
+  - 注意: 決算短信フォーマット差異により抽出精度はベストエフォート
+  - 注意: PDF は一時ファイル処理 (保存しない)
+- [x] **決算発表日の特定** ✅ tdnet_disclosures + 決算キーワード判定
+- [x] **chart 上の決算発表期間ハイライト** ✅ 銘柄詳細チャートにマーカー表示
 
 ### 1. ストレージ構成（GitHub Releases）
 - [x] SQLiteファイルをGitHub Releasesにアップロード（daily-update.yml）

@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     sqlite3 \
     bc \
     ca-certificates \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # GitHub CLI (gh) のインストール - upload-db タスク用

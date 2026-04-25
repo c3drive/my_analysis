@@ -130,7 +130,7 @@ func calcMetrics(lastPrice float64, sharesIssued, netIncome, netAssets, totalAss
 }
 
 func main() {
-	mode := flag.String("mode", "run", "execution mode: run, batch, serve, fetch-prices, calc-rs, export-json, fetch-tdnet, import-jpx, or test-parse")
+	mode := flag.String("mode", "run", "execution mode: run, batch, serve, fetch-prices, calc-rs, export-json, fetch-tdnet, parse-tanshin, import-jpx, or test-parse")
 	dateFlag := flag.String("date", time.Now().Format("2006-01-02"), "target date for run mode (YYYY-MM-DD)")
 	fromFlag := flag.String("from", "", "start date for batch mode (YYYY-MM-DD)")
 	toFlag := flag.String("to", "", "end date for batch mode (YYYY-MM-DD)")
@@ -154,6 +154,8 @@ func main() {
 		exportJSON()
 	case "fetch-tdnet":
 		fetchTdnet(*dateFlag)
+	case "parse-tanshin":
+		parseTanshinForDate(*dateFlag)
 	case "import-jpx":
 		importJPX(*fileFlag)
 	default:
