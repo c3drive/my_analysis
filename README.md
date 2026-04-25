@@ -1,7 +1,8 @@
 # EDINET XBRL Analyzer
 
 EDINET APIから上場企業の決算データを取得し、XBRLファイルを解析して財務分析を行うシステム。
-https://c3drive.github.io/my_analysis/
+
+公開サイト: <a href="https://c3drive.github.io/my_analysis/" target="_blank" rel="noopener noreferrer">https://c3drive.github.io/my_analysis/</a>
 
 ## 🚀 機能
 
@@ -217,9 +218,9 @@ task daily-update
 
 ## 📚 参考資料
 
-- [EDINET API仕様書](https://disclosure2.edinet-fsa.go.jp/)
-- [SQLite WASM Documentation](https://sqlite.org/wasm/)
-- [GitHub Actions Documentation](https://docs.github.com/actions)
+- <a href="https://disclosure2.edinet-fsa.go.jp/" target="_blank" rel="noopener noreferrer">EDINET API仕様書</a>
+- <a href="https://sqlite.org/wasm/" target="_blank" rel="noopener noreferrer">SQLite WASM Documentation</a>
+- <a href="https://docs.github.com/actions" target="_blank" rel="noopener noreferrer">GitHub Actions Documentation</a>
 
 ## 📄 ライセンス
 
@@ -227,4 +228,4 @@ MIT License
 
 ## 🙏 謝辞
 
-本プロジェクトは [kawasin73氏のブログ記事](https://kawasin73.hatenablog.com/entry/2025/11/20/224346) を参考にして開発された。
+本プロジェクトは <a href="https://kawasin73.hatenablog.com/entry/2025/11/20/224346" target="_blank" rel="noopener noreferrer">kawasin73氏のブログ記事</a> を参考にして開発された。
