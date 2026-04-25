@@ -406,27 +406,29 @@ func abs64(v int64) int64 {
 // IFRS/日本基準の主要4列パターン (売上, 営利, 経常/税引前, 純利益) に対応
 // 戻り値の単位は「百万円」(乗算前)
 func extractFromPeriodRow(text string) *FinancialData {
-	// 期表示で始まる行 (当期 = 最初に出現)
-	// 例: " 2026年３月期  1,405,493  2.5 132,951  △8.3 124,226  △7.4 82,688  △9.9    73,193 △10.1"
-	rx := regexp.MustCompile(`(?m)^[\s　]*\d{4}年[\s０-９0-9]+月期[\s\S]*?$`)
+	// 当期 (最初の年X月期) の開始位置
+	rx := regexp.MustCompile(`(?m)^[\s　]*\d{4}年[\s０-９0-9]+月期`)
 	loc := rx.FindStringIndex(text)
 	if loc == nil {
 		return nil
 	}
-	// マッチ箇所 + 次の200文字 (改行を含めて行を超える数値も拾う場合がある)
-	end := loc[1]
-	if end+50 < len(text) {
-		end += 50
+
+	// 終端: 次の「年X月期」(=前期) または +400文字 のいずれか早い方
+	// 改行で切らず、次の期表示までを範囲とする (PDFが折り返しで複数行になるケース対応)
+	rest := text[loc[1]:]
+	end := 400
+	if len(rest) < end {
+		end = len(rest)
 	}
-	line := text[loc[0]:end]
-	// 改行までで切る
-	if nl := strings.Index(line, "\n"); nl >= 0 {
-		line = line[:nl]
+	nextRx := regexp.MustCompile(`\d{4}年[\s０-９0-9]+月期`)
+	if m := nextRx.FindStringIndex(rest); m != nil && m[0] < end {
+		end = m[0]
 	}
+	region := text[loc[0] : loc[1]+end]
 
 	// 数値群を抽出
 	numRx := regexp.MustCompile(`[△▲\-]?[\d,]+(?:\.\d+)?`)
-	tokens := numRx.FindAllString(line, -1)
+	tokens := numRx.FindAllString(region, -1)
 
 	// 整数値のみ (パーセンテージは小数点を含むので除外)
 	var ints []int64
@@ -435,7 +437,7 @@ func extractFromPeriodRow(text string) *FinancialData {
 			continue
 		}
 		v := parseJPNumber(t)
-		// 4桁未満は年表記の数字 (2026, 月) や小さすぎるので除外
+		// 4桁未満は年表記 (2026, 月数字) やパーセント整数値 (△8 等) の可能性が高いので除外
 		if abs64(v) < 1000 {
 			continue
 		}
@@ -453,8 +455,11 @@ func extractFromPeriodRow(text string) *FinancialData {
 	if len(ints) >= 2 {
 		d.OperatingIncome = ints[1]
 	}
-	// 純利益は4番目 (4列パターン: 売上, 営利, 経常/税引前, 純利益) または最後
-	if len(ints) >= 4 {
+	// 純利益は 4列パターン (売上, 営利, 経常/税引前, 純利益) または 5列パターンの末尾
+	if len(ints) >= 5 {
+		// IFRS 5列: 売上収益, 調整後営利, 税引前, 当期利益, 親会社株主帰属当期利益
+		d.NetIncome = ints[4]
+	} else if len(ints) >= 4 {
 		d.NetIncome = ints[3]
 	} else if len(ints) >= 3 {
 		// 3列パターン (銀行など): 売上, 営利相当, 純利益
