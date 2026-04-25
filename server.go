@@ -764,6 +764,15 @@ func exportJSON() {
 	ensureDir()
 	migrateFromLegacyDB()
 
+	// マイグレーション (ALTER TABLE ADD COLUMN) を実行して列の欠損を補う
+	// 古い release から DB を取得した場合に必須
+	migDB, err := initXbrlDB()
+	if err != nil {
+		log.Printf("⚠️ Migration warning: %v", err)
+	} else {
+		migDB.Close()
+	}
+
 	db, err := openServerDB()
 	if err != nil {
 		log.Fatalf("DB open error: %v", err)
