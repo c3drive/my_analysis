@@ -52,7 +52,54 @@ func startServer() {
 		}
 		defer db.Close()
 
-		// 最新株価を含めたクエリ
+		type StockWithPrice struct {
+			Stock
+			LastPrice   float64  `json:"LastPrice"`
+			PriceDate   *string  `json:"PriceDate"`
+			MarketCap   int64    `json:"MarketCap"`
+			PER         *float64 `json:"PER"`
+			PBR         *float64 `json:"PBR"`
+			EPS         *float64 `json:"EPS"`
+			ROE         *float64 `json:"ROE"`
+			EquityRatio *float64 `json:"EquityRatio"`
+			NetNetRatio *float64 `json:"NetNetRatio"`
+			RS          *float64 `json:"RS"`
+			GrowthMetrics
+		}
+
+		// 重要: SetMaxOpenConns(1) のため、メインの rows を開く前に
+		// 補助マップ (rsMap, financialsMap) を完全にロードしてから次へ進む
+		// (rows を開いたまま別 Query を呼ぶとデッドロックする)
+
+		// RS値を一括取得してマップに格納
+		rsMap := make(map[string]float64)
+		rsRows, rsErr := db.Query(`
+			SELECT code, rs_rank FROM rs_db.rs_scores rs1
+			WHERE date = (SELECT MAX(date) FROM rs_db.rs_scores rs2 WHERE rs2.code = rs1.code)`)
+		if rsErr != nil {
+			log.Printf("⚠️ /api/stocks RS query error: %v", rsErr)
+		} else {
+			scanErrCount := 0
+			for rsRows.Next() {
+				var code string
+				var rank float64
+				if err := rsRows.Scan(&code, &rank); err != nil {
+					scanErrCount++
+					if scanErrCount <= 3 {
+						log.Printf("⚠️ /api/stocks RS scan error: %v", err)
+					}
+					continue
+				}
+				rsMap[code] = rank
+			}
+			rsRows.Close() // メインクエリを開く前に明示的にClose
+			log.Printf("📊 /api/stocks RS map loaded: %d entries (scan errors: %d)", len(rsMap), scanErrCount)
+		}
+
+		// 成長指標用の時系列データを一括ロード (内部で Query→Close 完結)
+		financialsMap, _ := loadAllFinancials(db)
+
+		// メインクエリ (補助データロード後に実行)
 		rows, err := db.Query(`
 			SELECT s.code, s.name, COALESCE(s.updated_at, ''),
 				   COALESCE(s.net_sales, 0), COALESCE(s.operating_income, 0), COALESCE(s.net_income, 0),
@@ -76,49 +123,6 @@ func startServer() {
 			return
 		}
 		defer rows.Close()
-
-		type StockWithPrice struct {
-			Stock
-			LastPrice   float64  `json:"LastPrice"`
-			PriceDate   *string  `json:"PriceDate"`
-			MarketCap   int64    `json:"MarketCap"`
-			PER         *float64 `json:"PER"`
-			PBR         *float64 `json:"PBR"`
-			EPS         *float64 `json:"EPS"`
-			ROE         *float64 `json:"ROE"`
-			EquityRatio *float64 `json:"EquityRatio"`
-			NetNetRatio *float64 `json:"NetNetRatio"`
-			RS          *float64 `json:"RS"`
-			GrowthMetrics
-		}
-
-		// RS値を一括取得してマップに格納
-		rsMap := make(map[string]float64)
-		rsRows, rsErr := db.Query(`
-			SELECT code, rs_rank FROM rs_db.rs_scores rs1
-			WHERE date = (SELECT MAX(date) FROM rs_db.rs_scores rs2 WHERE rs2.code = rs1.code)`)
-		if rsErr != nil {
-			log.Printf("⚠️ /api/stocks RS query error: %v", rsErr)
-		} else {
-			defer rsRows.Close()
-			scanErrCount := 0
-			for rsRows.Next() {
-				var code string
-				var rank float64
-				if err := rsRows.Scan(&code, &rank); err != nil {
-					scanErrCount++
-					if scanErrCount <= 3 {
-						log.Printf("⚠️ /api/stocks RS scan error: %v", err)
-					}
-					continue
-				}
-				rsMap[code] = rank
-			}
-			log.Printf("📊 /api/stocks RS map loaded: %d entries (scan errors: %d)", len(rsMap), scanErrCount)
-		}
-
-		// 成長指標用の時系列データを一括ロード
-		financialsMap, _ := loadAllFinancials(db)
 
 		var stocks []StockWithPrice
 		for rows.Next() {
@@ -365,29 +369,6 @@ func startServer() {
 		}
 		defer db.Close()
 
-		// 銘柄データと株価を取得
-		rows, err := db.Query(`
-			SELECT s.code, s.name, COALESCE(s.updated_at, ''),
-				   COALESCE(s.net_sales, 0), COALESCE(s.operating_income, 0), COALESCE(s.net_income, 0),
-				   COALESCE(s.total_assets, 0), COALESCE(s.net_assets, 0), COALESCE(s.current_assets, 0),
-				   COALESCE(s.liabilities, 0), COALESCE(s.current_liabilities, 0),
-				   COALESCE(s.cash_and_deposits, 0), COALESCE(s.shares_issued, 0),
-				   COALESCE(s.market_segment, ''), COALESCE(s.sector_33, ''), COALESCE(s.sector_17, ''),
-				   COALESCE(p.close, 0) as last_price,
-				   p.date as price_date
-			FROM stocks s
-			LEFT JOIN (
-				SELECT code, close, date FROM price_db.stock_prices sp1
-				WHERE date = (SELECT MAX(date) FROM price_db.stock_prices sp2 WHERE sp2.code = sp1.code)
-			) p ON s.code = p.code
-			WHERE s.net_sales > 0 OR s.net_income > 0
-			ORDER BY s.code ASC`)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
-
 		type OneilStock struct {
 			Code          string   `json:"Code"`
 			Name          string   `json:"Name"`
@@ -409,13 +390,13 @@ func startServer() {
 			UpdatedAt string `json:"UpdatedAt"`
 		}
 
+		// SetMaxOpenConns(1) のためメインクエリ前に補助データを完全ロードする
 		// RS値を一括取得
 		rsMap := make(map[string]float64)
 		rsRows, rsErr := db.Query(`
 			SELECT code, rs_rank FROM rs_db.rs_scores rs1
 			WHERE date = (SELECT MAX(date) FROM rs_db.rs_scores rs2 WHERE rs2.code = rs1.code)`)
 		if rsErr == nil {
-			defer rsRows.Close()
 			for rsRows.Next() {
 				var code string
 				var rank float64
@@ -423,10 +404,34 @@ func startServer() {
 					rsMap[code] = rank
 				}
 			}
+			rsRows.Close()
 		}
 
 		// 成長指標用の時系列データを一括ロード
 		financialsMap, _ := loadAllFinancials(db)
+
+		// メインクエリ (補助データロード後)
+		rows, err := db.Query(`
+			SELECT s.code, s.name, COALESCE(s.updated_at, ''),
+				   COALESCE(s.net_sales, 0), COALESCE(s.operating_income, 0), COALESCE(s.net_income, 0),
+				   COALESCE(s.total_assets, 0), COALESCE(s.net_assets, 0), COALESCE(s.current_assets, 0),
+				   COALESCE(s.liabilities, 0), COALESCE(s.current_liabilities, 0),
+				   COALESCE(s.cash_and_deposits, 0), COALESCE(s.shares_issued, 0),
+				   COALESCE(s.market_segment, ''), COALESCE(s.sector_33, ''), COALESCE(s.sector_17, ''),
+				   COALESCE(p.close, 0) as last_price,
+				   p.date as price_date
+			FROM stocks s
+			LEFT JOIN (
+				SELECT code, close, date FROM price_db.stock_prices sp1
+				WHERE date = (SELECT MAX(date) FROM price_db.stock_prices sp2 WHERE sp2.code = sp1.code)
+			) p ON s.code = p.code
+			WHERE s.net_sales > 0 OR s.net_income > 0
+			ORDER BY s.code ASC`)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
 
 		var stocks []OneilStock
 		for rows.Next() {
@@ -788,6 +793,27 @@ func exportJSON() {
 	}
 	defer db.Close()
 
+	// SetMaxOpenConns(1) のためメインクエリ前に補助データを完全ロードする
+	// RS値を一括取得
+	rsMap := make(map[string]float64)
+	rsRows, rsErr := db.Query(`
+		SELECT code, rs_rank FROM rs_db.rs_scores rs1
+		WHERE date = (SELECT MAX(date) FROM rs_db.rs_scores rs2 WHERE rs2.code = rs1.code)`)
+	if rsErr == nil {
+		for rsRows.Next() {
+			var code string
+			var rank float64
+			if rsRows.Scan(&code, &rank) == nil {
+				rsMap[code] = rank
+			}
+		}
+		rsRows.Close()
+	}
+
+	// 成長指標用の時系列データを一括ロード
+	financialsMap, _ := loadAllFinancials(db)
+
+	// メインクエリ (補助データロード後)
 	rows, err := db.Query(`
 		SELECT s.code, s.name, COALESCE(s.updated_at, ''),
 			   COALESCE(s.net_sales, 0), COALESCE(s.operating_income, 0), COALESCE(s.net_income, 0),
@@ -810,25 +836,6 @@ func exportJSON() {
 		log.Fatalf("Query error: %v", err)
 	}
 	defer rows.Close()
-
-	// RS値を一括取得
-	rsMap := make(map[string]float64)
-	rsRows, rsErr := db.Query(`
-		SELECT code, rs_rank FROM rs_db.rs_scores rs1
-		WHERE date = (SELECT MAX(date) FROM rs_db.rs_scores rs2 WHERE rs2.code = rs1.code)`)
-	if rsErr == nil {
-		defer rsRows.Close()
-		for rsRows.Next() {
-			var code string
-			var rank float64
-			if rsRows.Scan(&code, &rank) == nil {
-				rsMap[code] = rank
-			}
-		}
-	}
-
-	// 成長指標用の時系列データを一括ロード
-	financialsMap, _ := loadAllFinancials(db)
 
 	type StockJSON struct {
 		Stock
