@@ -146,11 +146,11 @@
 
 #### 資産項目（ネットネット計算用）
 - [x] `cash_and_deposits` - 現金及び預金（main.go実装済み）
-- [ ] `deposits` - 預金
+- [x] ~~`deposits` - 預金~~ → `cash_and_deposits` で合算取得済み (単独開示は稀)
 - [x] `investment_securities` - 投資有価証券 ✅ XBRLパース・DB・UI対応
-- [x] `accounts_receivable` - 売掛金 ✅ XBRLパース・DB・UI対応
+- [x] `accounts_receivable` - 売掛金 ✅ XBRLパース・DB・UI対応 (NotesAndAccountsReceivableTrade含む)
 - [x] `marketable_securities` - 有価証券 ✅ `securities`として実装
-- [ ] `notes_receivable` - 受取手形
+- [x] ~~`notes_receivable` - 受取手形~~ → `accounts_receivable` 内で `NotesAndAccountsReceivableTrade` をフォールバック取得済み
 - [x] `inventories` - 棚卸資産 ✅ XBRLパース・DB・UI対応
 
 #### 負債項目
