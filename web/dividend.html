@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>バリュー投資 (グレアム + Piotroski F9) | 株式分析ダッシュボード</title>
-    <meta name="description" content="グレアム式の割安指標 (PER/PBR/EV/EBIT/FCF利回り) と Piotroski F9 を組み合わせたハイブリッドスクリーニング。">
+    <title>高配当株スクリーニング | 株式分析ダッシュボード</title>
+    <meta name="description" content="配当利回りに加え、配当性向・連続非減配年数・自己資本率で「持続性のある高配当株」を発掘。">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -21,7 +21,7 @@
         }
         h1 {
             font-size: 1.8rem;
-            background: linear-gradient(135deg, #00ffaa, #00d9ff);
+            background: linear-gradient(135deg, #ffd700, #ff9966);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             background-clip: text; margin-bottom: 10px;
         }
@@ -33,20 +33,21 @@
             font-size: 0.85rem; transition: all 0.2s;
         }
         .nav a:hover, .nav a.active {
-            background: rgba(0, 255, 170, 0.18); border-color: #00ffaa; color: #00ffaa;
+            background: rgba(255, 215, 0, 0.18); border-color: #ffd700; color: #ffd700;
         }
         .info-box {
-            background: rgba(0, 255, 170, 0.06);
-            border: 1px solid rgba(0, 255, 170, 0.22);
+            background: rgba(255, 215, 0, 0.06);
+            border: 1px solid rgba(255, 215, 0, 0.22);
             border-radius: 12px; padding: 18px 22px; margin-bottom: 24px;
             color: #ccc; line-height: 1.7; font-size: 0.9rem;
         }
-        .info-box strong { color: #00ffaa; }
+        .info-box strong { color: #ffd700; }
         .score-formula {
             display: inline-block; background: rgba(0,0,0,0.25);
             padding: 2px 8px; border-radius: 4px; margin: 0 2px;
             font-family: monospace; font-size: 0.82rem; color: #00d9ff;
         }
+        .warn { color: #ff9966; font-size: 0.82rem; }
 
         .status-bar {
             display: flex; gap: 20px; flex-wrap: wrap;
@@ -55,7 +56,7 @@
         }
         .status-item { display: flex; flex-direction: column; }
         .status-label { font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-        .status-value { font-size: 1.1rem; font-weight: bold; color: #00ffaa; margin-top: 4px; }
+        .status-value { font-size: 1.1rem; font-weight: bold; color: #ffd700; margin-top: 4px; }
 
         .filter-bar {
             display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -71,7 +72,7 @@
             border-radius: 6px; color: #e0e0e0; font-size: 0.85rem;
         }
         .filter-group input:focus, .filter-group select:focus {
-            outline: none; border-color: #00ffaa;
+            outline: none; border-color: #ffd700;
         }
 
         .table-wrapper {
@@ -80,61 +81,39 @@
         }
         table { width: 100%; border-collapse: collapse; }
         th {
-            background: rgba(0, 255, 170, 0.1); color: #00ffaa;
+            background: rgba(255, 215, 0, 0.1); color: #ffd700;
             padding: 10px 12px; text-align: left; font-weight: 600; font-size: 0.82rem;
             cursor: pointer; user-select: none; white-space: nowrap;
         }
-        th:hover { background: rgba(0, 255, 170, 0.2); }
+        th:hover { background: rgba(255, 215, 0, 0.2); }
         th.sort-asc::after { content: ' ▲'; font-size: 0.7rem; }
         th.sort-desc::after { content: ' ▼'; font-size: 0.7rem; }
         td { padding: 8px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 0.84rem; }
-        tr:hover { background: rgba(0, 255, 170, 0.04); cursor: pointer; }
+        tr:hover { background: rgba(255, 215, 0, 0.04); }
         .code-cell { font-family: monospace; color: #00d9ff; font-weight: 600; }
         .code-link { color: #00d9ff; text-decoration: none; }
         .code-link:hover { text-decoration: underline; }
         .number-cell { text-align: right; font-family: monospace; }
-        .name-cell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .name-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .yield-cell {
+            text-align: right; font-family: monospace; font-weight: 700;
+            color: #ffd700;
+        }
         .score-cell {
             font-family: monospace; font-weight: 700; text-align: right;
-            color: #00ffaa;
+            color: #ffd700;
         }
-        .fscore-cell {
-            text-align: center; font-family: monospace;
-            font-weight: 700; font-size: 0.95rem;
+        .payout-good { color: #00ff88; }
+        .payout-warn { color: #ffd93d; }
+        .payout-danger { color: #ff6b6b; }
+        .nocut-badge {
+            display: inline-block; padding: 2px 6px;
+            background: rgba(0, 255, 136, 0.12); color: #00ff88;
+            border-radius: 4px; font-size: 0.75rem; font-weight: 600;
         }
-        .fscore-9, .fscore-8 { color: #00ff88; }
-        .fscore-7, .fscore-6 { color: #00d9ff; }
-        .fscore-5, .fscore-4 { color: #ffd93d; }
-        .fscore-3, .fscore-2, .fscore-1, .fscore-0 { color: #888; }
+        .nocut-badge.zero { background: rgba(255,255,255,0.05); color: #777; }
         .no-data { color: #555; }
         .empty-state { text-align: center; padding: 40px 20px; color: #666; }
-
-        /* F9 detail modal */
-        .modal-bg {
-            display: none; position: fixed; inset: 0;
-            background: rgba(0,0,0,0.7); z-index: 1000;
-            align-items: center; justify-content: center;
-        }
-        .modal-bg.show { display: flex; }
-        .modal {
-            background: #1a1a2e; border: 1px solid rgba(0,255,170,0.3);
-            border-radius: 14px; padding: 24px 28px; max-width: 480px; width: 90%;
-            max-height: 80vh; overflow-y: auto;
-        }
-        .modal h3 { color: #00ffaa; margin-bottom: 14px; font-size: 1.1rem; }
-        .modal .close { float: right; cursor: pointer; color: #888; font-size: 1.4rem; line-height: 1; }
-        .modal .close:hover { color: #ff6b6b; }
-        .f9-list { list-style: none; padding: 0; margin-top: 12px; }
-        .f9-list li {
-            padding: 8px 12px; margin-bottom: 4px;
-            background: rgba(255,255,255,0.03);
-            border-left: 3px solid #555; border-radius: 4px;
-            font-size: 0.88rem;
-        }
-        .f9-list li.pass { border-left-color: #00ff88; color: #e0e0e0; }
-        .f9-list li.fail { border-left-color: #ff6b6b; color: #999; }
-        .f9-list li.na { border-left-color: #555; color: #666; font-style: italic; }
-        .f9-list .check { display: inline-block; width: 18px; }
 
         @media (max-width: 768px) {
             .container { padding: 12px !important; }
@@ -151,14 +130,14 @@
 <body>
     <div class="container">
         <header>
-            <h1>💰 バリュー投資 (グレアム + Piotroski F9)</h1>
-            <p class="subtitle">割安指標と財務健全性のハイブリッドスコアで「質の高い割安株」を発掘</p>
+            <h1>💴 高配当株スクリーニング</h1>
+            <p class="subtitle">利回り単独でなく「持続性 (配当性向・連続非減配)」を併せて評価</p>
             <nav class="nav">
                 <a href="index.html">📊 基本ダッシュボード</a>
                 <a href="net-net-value.html">💎 ネットネット分析</a>
                 <a href="oneil-screen.html">🚀 オニールスクリーニング</a>
-                <a href="value.html" class="active">💰 バリュー</a>
-                <a href="dividend.html">💴 高配当</a>
+                <a href="value.html">💰 バリュー</a>
+                <a href="dividend.html" class="active">💴 高配当</a>
                 <a href="market-top.html">📈 マーケット天井検出</a>
                 <a href="cycle.html">🔄 セクター</a>
                 <a href="query.html">🔍 SQL クエリ</a>
@@ -168,25 +147,23 @@
 
         <div class="info-box">
             <strong>📖 この画面でできること</strong><br>
-            <strong>グレアムの割安指標</strong> (PER・PBR・FCF利回り・EV/EBIT) と <strong>Piotroski F9</strong> (財務健全性 9項目) を 100 点満点でスコアリング。
-            「万年割安」を避けるため F-Score で質を確認する。<br>
+            <strong>配当利回り</strong> だけでなく <strong>配当性向 (30-60%が安定的)</strong> や <strong>連続非減配年数</strong> も加味した
+            「減配リスクの低い高配当株」を発掘する。<br>
             <br>
             <strong>スコア配点 (100点):</strong>
-            <span class="score-formula">PER 15</span>
-            <span class="score-formula">PBR 15</span>
-            <span class="score-formula">FCF利回り 10</span>
-            <span class="score-formula">EV/EBIT 10</span>
-            <span class="score-formula">F9 42</span>
-            <span class="score-formula">自己資本率 8</span><br>
+            <span class="score-formula">配当利回り 40</span>
+            <span class="score-formula">配当性向 20</span>
+            <span class="score-formula">連続非減配 20</span>
+            <span class="score-formula">自己資本率 10</span>
+            <span class="score-formula">ROE 10</span><br>
             <br>
-            <strong>使い方:</strong> 行をクリックで F9 内訳モーダルを表示。コードクリックで銘柄詳細へ。
-            列ヘッダクリックでソート、フィルタで絞り込み。<br>
-            <strong>有望銘柄の目安:</strong> Score ≥ 70、F9 ≥ 6、PBR ≤ 1.0、自己資本率 ≥ 40% を全て満たすもの。
+            <strong>判断の目安:</strong> 利回り ≥ 3%、配当性向 30-60%、連続非減配 ≥ 3年、自己資本率 ≥ 40% を全て満たすものが「持続性のある高配当株」。<br>
+            <span class="warn">⚠️ 配当性向が 80% を超える銘柄は減配リスク高。100% 超は取り崩し配当の可能性あり。</span>
         </div>
 
         <div class="status-bar">
             <div class="status-item">
-                <span class="status-label">対象銘柄</span>
+                <span class="status-label">高配当銘柄数</span>
                 <span class="status-value" id="stock-count">-</span>
             </div>
             <div class="status-item">
@@ -194,8 +171,8 @@
                 <span class="status-value" id="visible-count">-</span>
             </div>
             <div class="status-item">
-                <span class="status-label">F9平均</span>
-                <span class="status-value" id="f9-avg">-</span>
+                <span class="status-label">平均利回り</span>
+                <span class="status-value" id="yield-avg">-</span>
             </div>
             <div class="status-item">
                 <span class="status-label">基準日</span>
@@ -205,16 +182,16 @@
 
         <div class="filter-bar">
             <div class="filter-group">
-                <label>PER 上限</label>
-                <input type="number" id="filter-per" value="15" step="1" min="0">
+                <label>利回り最低 (%)</label>
+                <input type="number" id="filter-yield" value="3.0" step="0.1" min="0">
             </div>
             <div class="filter-group">
-                <label>PBR 上限</label>
-                <input type="number" id="filter-pbr" value="1.5" step="0.1" min="0">
+                <label>配当性向 上限 (%)</label>
+                <input type="number" id="filter-payout" value="80" step="5" min="0">
             </div>
             <div class="filter-group">
-                <label>F9 最低値</label>
-                <input type="number" id="filter-f9" value="0" step="1" min="0" max="9">
+                <label>連続非減配 最低</label>
+                <input type="number" id="filter-nocut" value="0" step="1" min="0">
             </div>
             <div class="filter-group">
                 <label>自己資本率最低 (%)</label>
@@ -255,13 +232,13 @@
                         <th data-sort="Name">銘柄名</th>
                         <th data-sort="Sector33">業種</th>
                         <th data-sort="Score" class="number-cell">Score</th>
-                        <th data-sort="FScore" class="number-cell">F9</th>
-                        <th data-sort="PER" class="number-cell">PER</th>
-                        <th data-sort="PBR" class="number-cell">PBR</th>
-                        <th data-sort="EVEBIT" class="number-cell">EV/EBIT</th>
-                        <th data-sort="FCFYield" class="number-cell">FCF利%</th>
+                        <th data-sort="DividendYield" class="number-cell">利回り%</th>
+                        <th data-sort="DividendPerShare" class="number-cell">DPS円</th>
+                        <th data-sort="PayoutRatio" class="number-cell">配当性向%</th>
+                        <th data-sort="NoCutYears" class="number-cell">非減配年</th>
                         <th data-sort="ROE" class="number-cell">ROE%</th>
                         <th data-sort="EquityRatio" class="number-cell">自己資本%</th>
+                        <th data-sort="PER" class="number-cell">PER</th>
                         <th data-sort="LastPrice" class="number-cell">株価</th>
                         <th data-sort="MarketCap" class="number-cell">時価総額</th>
                     </tr>
@@ -273,15 +250,6 @@
         </div>
     </div>
 
-    <div class="modal-bg" id="modal-bg" onclick="closeModal(event)">
-        <div class="modal" onclick="event.stopPropagation()">
-            <span class="close" onclick="closeModal()">&times;</span>
-            <h3 id="modal-title">F-Score 内訳</h3>
-            <div id="modal-summary" style="color:#aaa;font-size:0.88rem;margin-bottom:8px;"></div>
-            <ul class="f9-list" id="modal-f9-list"></ul>
-        </div>
-    </div>
-
     <script>
         const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -289,26 +257,15 @@
         let sortKey = 'Score';
         let sortDir = 'desc';
 
-        const F9_LABELS = [
-            { key: 'ROAPositive',    label: '1. ROA > 0 (黒字)' },
-            { key: 'ROAImproved',    label: '2. ΔROA > 0 (収益性改善)' },
-            { key: 'CFOPositive',    label: '3. 営業CF > 0' },
-            { key: 'AccrualsGood',   label: '4. CFO > 純利益 (利益の質)' },
-            { key: 'LeverageDown',   label: '5. Δ長期負債率 < 0 (財務改善)' },
-            { key: 'CurrentRatioUp', label: '6. Δ流動比率 > 0 (短期安全性向上)' },
-            { key: 'NoDilution',     label: '7. 希薄化なし (発行済株式数)' },
-            { key: 'GrossMarginUp',  label: '8. Δ粗利率 > 0 (収益力向上)' },
-            { key: 'AssetTurnUp',    label: '9. Δ資産回転率 > 0 (効率性向上)' },
-        ];
-
         async function loadData() {
             try {
-                const res = await fetch('/api/value-ranking');
+                const res = await fetch('/api/dividend-ranking');
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 allStocks = await res.json();
                 if (!Array.isArray(allStocks) || allStocks.length === 0) {
                     document.getElementById('tbody').innerHTML =
-                        '<tr><td colspan="14" class="empty-state">データなし。財務データの取得が必要です。</td></tr>';
+                        '<tr><td colspan="14" class="empty-state">高配当データなし。<br>' +
+                        'XBRL バルクロード (CFO/粗利/配当タグ追加版) を実行してください。</td></tr>';
                     return;
                 }
                 document.getElementById('stock-count').textContent = allStocks.length;
@@ -332,21 +289,20 @@
         }
 
         function applyFilters(stocks) {
-            const perMax = parseFloat(document.getElementById('filter-per').value);
-            const pbrMax = parseFloat(document.getElementById('filter-pbr').value);
-            const f9Min = parseInt(document.getElementById('filter-f9').value, 10) || 0;
+            const yieldMin = parseFloat(document.getElementById('filter-yield').value) || 0;
+            const payoutMax = parseFloat(document.getElementById('filter-payout').value);
+            const nocutMin = parseInt(document.getElementById('filter-nocut').value, 10) || 0;
             const equityMin = parseFloat(document.getElementById('filter-equity').value) || 0;
             const seg = document.getElementById('filter-segment').value;
             const sector = document.getElementById('filter-sector').value;
 
             return stocks.filter(s => {
-                if (!isNaN(perMax) && perMax > 0) {
-                    if (s.PER == null || s.PER > perMax) return false;
+                if (yieldMin > 0 && (s.DividendYield == null || s.DividendYield < yieldMin)) return false;
+                if (!isNaN(payoutMax) && payoutMax > 0) {
+                    // PayoutRatioがnullの場合は通す (情報不足だが利回りは満たしている)
+                    if (s.PayoutRatio != null && s.PayoutRatio > payoutMax) return false;
                 }
-                if (!isNaN(pbrMax) && pbrMax > 0) {
-                    if (s.PBR == null || s.PBR > pbrMax) return false;
-                }
-                if (s.FScore < f9Min) return false;
+                if (s.NoCutYears < nocutMin) return false;
                 if (equityMin > 0 && (s.EquityRatio == null || s.EquityRatio < equityMin)) return false;
                 if (seg && s.MarketSegment !== seg) return false;
                 if (sector && s.Sector33 !== sector) return false;
@@ -359,11 +315,19 @@
             return [...stocks].sort((a, b) => {
                 const va = a[sortKey], vb = b[sortKey];
                 if (va == null && vb == null) return 0;
-                if (va == null) return 1;  // nullは末尾
+                if (va == null) return 1;
                 if (vb == null) return -1;
                 if (typeof va === 'string') return va.localeCompare(vb) * dir;
                 return (va - vb) * dir;
             });
+        }
+
+        function payoutClass(p) {
+            if (p == null) return '';
+            if (p >= 30 && p <= 60) return 'payout-good';
+            if (p > 60 && p <= 80) return 'payout-warn';
+            if (p > 80) return 'payout-danger';
+            return '';
         }
 
         function render() {
@@ -373,11 +337,10 @@
             const visible = sorted.slice(0, limit);
 
             document.getElementById('visible-count').textContent = visible.length + ' / ' + filtered.length;
-            const f9Sum = filtered.reduce((s, x) => s + (x.FScore || 0), 0);
-            document.getElementById('f9-avg').textContent =
-                filtered.length ? (f9Sum / filtered.length).toFixed(1) : '-';
+            const yields = filtered.map(s => s.DividendYield).filter(v => v != null);
+            document.getElementById('yield-avg').textContent =
+                yields.length ? (yields.reduce((s, v) => s + v, 0) / yields.length).toFixed(2) + '%' : '-';
 
-            // ソート列マーキング
             document.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
             const activeTh = document.querySelector(`th[data-sort="${sortKey}"]`);
             if (activeTh) activeTh.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
@@ -392,22 +355,24 @@
                 v == null ? '<span class="no-data">-</span>' : v.toFixed(digits) + suffix;
 
             tbody.innerHTML = visible.map((s, i) => {
-                const fScoreClass = `fscore-${s.FScore || 0}`;
                 const mcap = s.MarketCap ? (s.MarketCap / 1e8).toFixed(0) + '億' : '-';
+                const nocutCls = s.NoCutYears > 0 ? '' : 'zero';
+                const nocutLabel = s.NoCutYears > 0 ? `${s.NoCutYears}年` : '0';
+                const payoutCls = payoutClass(s.PayoutRatio);
                 return `
-                    <tr onclick="showF9Detail(${allStocks.indexOf(s)})">
+                    <tr>
                         <td class="number-cell" style="color:#666;">${i + 1}</td>
-                        <td class="code-cell" onclick="event.stopPropagation()"><a class="code-link" href="stock-detail.html?code=${encodeURIComponent(s.Code)}&from=value.html">${esc(s.Code)}</a></td>
+                        <td class="code-cell"><a class="code-link" href="stock-detail.html?code=${encodeURIComponent(s.Code)}&from=dividend.html">${esc(s.Code)}</a></td>
                         <td class="name-cell" title="${esc(s.Name)}">${esc(s.Name) || '-'}</td>
                         <td style="font-size:0.78rem;color:#aaa;">${esc(s.Sector33) || '-'}</td>
                         <td class="score-cell">${s.Score.toFixed(1)}</td>
-                        <td class="fscore-cell ${fScoreClass}">${s.FScore}/${s.FAvailable || 9}</td>
-                        <td class="number-cell">${fmt(s.PER, 1, '倍')}</td>
-                        <td class="number-cell">${fmt(s.PBR, 2, '倍')}</td>
-                        <td class="number-cell">${fmt(s.EVEBIT, 1)}</td>
-                        <td class="number-cell">${fmt(s.FCFYield, 1, '%')}</td>
+                        <td class="yield-cell">${fmt(s.DividendYield, 2, '%')}</td>
+                        <td class="number-cell">${s.DividendPerShare > 0 ? s.DividendPerShare.toFixed(2) : '-'}</td>
+                        <td class="number-cell ${payoutCls}">${fmt(s.PayoutRatio, 1, '%')}</td>
+                        <td class="number-cell"><span class="nocut-badge ${nocutCls}">${nocutLabel}</span></td>
                         <td class="number-cell">${fmt(s.ROE, 1, '%')}</td>
                         <td class="number-cell">${fmt(s.EquityRatio, 0, '%')}</td>
+                        <td class="number-cell">${fmt(s.PER, 1, '倍')}</td>
                         <td class="number-cell">${s.LastPrice ? Math.round(s.LastPrice).toLocaleString() : '-'}</td>
                         <td class="number-cell">${mcap}</td>
                     </tr>
@@ -415,38 +380,6 @@
             }).join('');
         }
 
-        function showF9Detail(idx) {
-            const s = allStocks[idx];
-            if (!s) return;
-            document.getElementById('modal-title').textContent =
-                `${s.Code} ${s.Name} — F-Score 内訳`;
-            document.getElementById('modal-summary').innerHTML =
-                `<strong style="color:#00ffaa;">${s.FScore} / ${s.FAvailable || 9} 項目クリア</strong>` +
-                ` &nbsp;|&nbsp; 総合スコア ${s.Score.toFixed(1)} / 100`;
-
-            const detail = s.FDetail || {};
-            const ul = document.getElementById('modal-f9-list');
-            ul.innerHTML = F9_LABELS.map(({key, label}) => {
-                // detail に対応キーがあれば bool 判定、無ければ na
-                const hasKey = key in detail;
-                if (!hasKey) {
-                    return `<li class="na"><span class="check">−</span> ${esc(label)} <span style="color:#666;font-size:0.78rem;">(データ不足)</span></li>`;
-                }
-                const passed = !!detail[key];
-                return `<li class="${passed ? 'pass' : 'fail'}">
-                    <span class="check">${passed ? '✓' : '✗'}</span> ${esc(label)}
-                </li>`;
-            }).join('');
-
-            document.getElementById('modal-bg').classList.add('show');
-        }
-
-        function closeModal(e) {
-            if (e && e.target.id !== 'modal-bg' && e.type === 'click') return;
-            document.getElementById('modal-bg').classList.remove('show');
-        }
-
-        // ソートヘッダ
         document.querySelectorAll('th[data-sort]').forEach(th => {
             th.addEventListener('click', () => {
                 const key = th.dataset.sort;
@@ -461,15 +394,9 @@
             });
         });
 
-        // フィルタ変更で再描画
-        ['filter-per', 'filter-pbr', 'filter-f9', 'filter-equity', 'filter-segment', 'filter-sector', 'filter-limit'].forEach(id => {
+        ['filter-yield', 'filter-payout', 'filter-nocut', 'filter-equity', 'filter-segment', 'filter-sector', 'filter-limit'].forEach(id => {
             document.getElementById(id).addEventListener('input', render);
             document.getElementById(id).addEventListener('change', render);
-        });
-
-        // ESCでモーダル閉じる
-        document.addEventListener('keydown', e => {
-            if (e.key === 'Escape') closeModal();
         });
 
         loadData();

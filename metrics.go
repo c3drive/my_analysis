@@ -27,6 +27,7 @@ type financialRecord struct {
 	currentLiabilities    int64
 	operatingCashFlow     int64
 	grossProfit           int64
+	dividendPerShare      float64
 }
 
 func (r financialRecord) eps() float64 {
@@ -44,7 +45,8 @@ func loadAllFinancials(db *sql.DB) (map[string][]financialRecord, error) {
 		       COALESCE(net_income, 0), COALESCE(net_sales, 0), COALESCE(shares_issued, 0),
 		       COALESCE(total_assets, 0), COALESCE(non_current_liabilities, 0),
 		       COALESCE(current_assets, 0), COALESCE(current_liabilities, 0),
-		       COALESCE(operating_cash_flow, 0), COALESCE(gross_profit, 0)
+		       COALESCE(operating_cash_flow, 0), COALESCE(gross_profit, 0),
+		       COALESCE(dividend_per_share, 0.0)
 		FROM stock_financials
 		ORDER BY code ASC, submission_date DESC`)
 	if err != nil {
@@ -61,7 +63,8 @@ func loadAllFinancials(db *sql.DB) (map[string][]financialRecord, error) {
 			&r.netIncome, &r.netSales, &r.sharesIssued,
 			&r.totalAssets, &r.nonCurrentLiabilities,
 			&r.currentAssets, &r.currentLiabilities,
-			&r.operatingCashFlow, &r.grossProfit); err != nil {
+			&r.operatingCashFlow, &r.grossProfit,
+			&r.dividendPerShare); err != nil {
 			continue
 		}
 		if len(dateStr) < 10 {
