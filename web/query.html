@@ -136,6 +136,54 @@
         tr:hover td { background: rgba(192, 132, 252, 0.04); }
         td.numeric { text-align: right; color: #00ff88; }
         td.null { color: #555; font-style: italic; }
+    
+        /* ================================
+         * レスポンシブ (モバイル対応)
+         * ================================ */
+        @media (max-width: 768px) {
+            .container { padding: 12px !important; max-width: 100% !important; }
+            header { padding: 16px !important; margin-bottom: 14px !important; }
+            h1 { font-size: 1.3rem !important; }
+            .subtitle { font-size: 0.82rem !important; }
+            .nav, .nav-bar { gap: 5px !important; flex-wrap: wrap !important; padding: 8px !important; }
+            .nav a, .nav-bar a { padding: 5px 9px !important; font-size: 0.72rem !important; }
+            .stock-name { font-size: 1.3rem !important; }
+            .current-price { font-size: 1.5rem !important; }
+            .info-box, details { padding: 12px 14px !important; font-size: 0.82rem !important; }
+            .panel { padding: 12px !important; }
+            .filter-bar { padding: 12px !important; gap: 10px !important; }
+            .filter-group input[type="number"] { width: 60px !important; }
+            .status-bar { gap: 10px !important; padding: 12px !important; }
+            .status-card { padding: 12px !important; }
+            .status-value { font-size: 1.1rem !important; }
+            .metrics-grid, .criteria-grid, .financial-grid {
+                grid-template-columns: 1fr 1fr !important;
+                gap: 8px !important;
+            }
+            .metric-card, .criteria-card { padding: 10px !important; }
+            .metric-value { font-size: 1rem !important; }
+            .table-wrapper, .table-container, .table-wrapper-x {
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch;
+            }
+            table { min-width: 700px; font-size: 0.78rem !important; }
+            th, td { padding: 6px 8px !important; }
+            #price-chart { height: 300px !important; }
+            #market-chart, #rs-chart { height: 280px !important; }
+            .stock-header { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
+            .stock-price-area { text-align: left !important; }
+            .content-layout { display: block !important; }
+            .sidebar { width: 100% !important; max-width: none !important; margin-bottom: 14px !important; }
+            .chart-controls { gap: 4px !important; }
+            .chart-type-btn { padding: 5px 10px !important; font-size: 0.75rem !important; }
+        }
+        @media (max-width: 480px) {
+            .metrics-grid, .criteria-grid, .financial-grid {
+                grid-template-columns: 1fr !important;
+            }
+            h1 { font-size: 1.1rem !important; }
+        }
+
     </style>
 </head>
 
