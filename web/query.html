@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL クエリ | 株式分析ダッシュボード</title>
+    <meta name="description" content="ブラウザ内 SQLite (sqlite-wasm) で xbrl.db を直接クエリ。ローカル DB ファイルをアップロードして自由に分析。">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 30px; }
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        h1 {
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, #c084fc, #00d9ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+        .subtitle { color: #a0a0a0; font-size: 0.95rem; }
+        .nav { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .nav a {
+            color: #00d9ff; text-decoration: none; padding: 8px 16px; border-radius: 8px;
+            background: rgba(0, 217, 255, 0.1); border: 1px solid rgba(0, 217, 255, 0.3);
+            transition: all 0.2s; font-size: 0.85rem;
+        }
+        .nav a:hover, .nav a.active {
+            background: rgba(192, 132, 252, 0.2); border-color: #c084fc; color: #c084fc;
+        }
+
+        .info-box {
+            background: rgba(192, 132, 252, 0.08);
+            border: 1px solid rgba(192, 132, 252, 0.25);
+            border-radius: 12px; padding: 18px 22px; margin-bottom: 24px;
+            color: #ccc; line-height: 1.7; font-size: 0.9rem;
+        }
+        .info-box strong { color: #c084fc; }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px; padding: 20px; margin-bottom: 20px;
+        }
+        .panel-title {
+            font-size: 1rem; font-weight: 600; color: #e0e0e0; margin-bottom: 14px;
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        .file-row {
+            display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .file-input-label {
+            display: inline-block; padding: 10px 18px;
+            background: rgba(0, 217, 255, 0.12); border: 1px solid rgba(0, 217, 255, 0.4);
+            color: #00d9ff; border-radius: 8px; cursor: pointer; font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        .file-input-label:hover { background: rgba(0, 217, 255, 0.2); }
+        input[type="file"] { display: none; }
+        .or { color: #666; font-size: 0.85rem; }
+        .btn {
+            padding: 10px 18px; border: none; border-radius: 8px; cursor: pointer;
+            font-size: 0.85rem; font-weight: 600; transition: all 0.2s;
+        }
+        .btn-primary {
+            background: rgba(0, 255, 136, 0.15); color: #00ff88;
+            border: 1px solid rgba(0, 255, 136, 0.4);
+        }
+        .btn-primary:hover { background: rgba(0, 255, 136, 0.25); }
+        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05); color: #aaa;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+
+        .status {
+            margin-top: 10px; padding: 10px 14px; border-radius: 8px;
+            font-size: 0.85rem; line-height: 1.5;
+        }
+        .status.info { background: rgba(0, 217, 255, 0.08); color: #00d9ff; border: 1px solid rgba(0, 217, 255, 0.2); }
+        .status.success { background: rgba(0, 255, 136, 0.08); color: #00ff88; border: 1px solid rgba(0, 255, 136, 0.2); }
+        .status.error { background: rgba(255, 107, 107, 0.08); color: #ff6b6b; border: 1px solid rgba(255, 107, 107, 0.2); }
+
+        textarea {
+            width: 100%; min-height: 120px; padding: 12px;
+            background: rgba(0, 0, 0, 0.4); color: #e0e0e0;
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;
+            font-family: 'Courier New', Monaco, monospace; font-size: 0.85rem;
+            resize: vertical;
+        }
+        textarea:focus { outline: none; border-color: #c084fc; }
+
+        .preset-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+        .preset-btn {
+            padding: 5px 10px; background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1); color: #888;
+            border-radius: 6px; cursor: pointer; font-size: 0.75rem;
+            transition: all 0.15s;
+        }
+        .preset-btn:hover { background: rgba(0, 217, 255, 0.1); color: #00d9ff; border-color: rgba(0, 217, 255, 0.3); }
+
+        .result-meta { color: #888; font-size: 0.8rem; margin-bottom: 8px; }
+        .result-table-wrapper {
+            max-height: 600px; overflow: auto; border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th {
+            background: rgba(192, 132, 252, 0.15); color: #c084fc;
+            padding: 10px 12px; text-align: left; font-weight: 600;
+            border-bottom: 2px solid rgba(192, 132, 252, 0.3);
+            position: sticky; top: 0;
+        }
+        td {
+            padding: 8px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-family: 'Courier New', monospace;
+        }
+        tr:hover td { background: rgba(192, 132, 252, 0.04); }
+        td.numeric { text-align: right; color: #00ff88; }
+        td.null { color: #555; font-style: italic; }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 SQL クエリ (ブラウザ内 SQLite)</h1>
+            <p class="subtitle">sqlite-wasm でローカル / GitHub Release のDBを直接クエリ</p>
+            <nav class="nav">
+                <a href="index.html">📊 基本ダッシュボード</a>
+                <a href="net-net-value.html">💎 ネットネット分析</a>
+                <a href="oneil-screen.html">🚀 オニールスクリーニング</a>
+                <a href="market-top.html">📈 マーケット天井検出</a>
+                <a href="query.html" class="active">🔍 SQL クエリ</a>
+            </nav>
+        </header>
+
+        <div class="info-box">
+            <strong>📖 この画面でできること</strong><br>
+            ブラウザ内 SQLite (sql.js) で xbrl.db を直接クエリできる。サーバー不要。<br>
+            <strong>使い方:</strong> ローカルの DB ファイル (.db / .db.gz) を選ぶか、最新の GitHub Release から自動取得。
+            その後 SQL クエリを書いて実行。プリセットボタンで例文を投入できる。<br>
+            <strong>注意:</strong> .db.gz の解凍はブラウザ上で行う (pako)。10MB 程度の DB なら数秒で読み込み完了。
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">📂 DB の読み込み</div>
+            <div class="file-row">
+                <label class="file-input-label" for="db-file">📁 ローカルファイルを選択 (.db / .db.gz)</label>
+                <input type="file" id="db-file" accept=".db,.gz,.sqlite">
+                <span class="or">または</span>
+                <button class="btn btn-primary" id="load-release">📥 GitHub Release から自動取得</button>
+            </div>
+            <div id="db-status" class="status info">DBが未読込です。ファイルを選択してください。</div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">⚡ SQL クエリ</div>
+            <div class="preset-buttons" id="preset-buttons"></div>
+            <textarea id="sql-input" placeholder="例: SELECT code, name, net_sales FROM stocks WHERE net_sales > 0 ORDER BY net_sales DESC LIMIT 20;"></textarea>
+            <div style="margin-top: 12px; display: flex; gap: 8px;">
+                <button class="btn btn-primary" id="run-sql" disabled>▶ 実行 (Ctrl/Cmd+Enter)</button>
+                <button class="btn btn-secondary" id="clear-sql">クリア</button>
+            </div>
+        </div>
+
+        <div class="panel" id="result-panel" style="display: none;">
+            <div class="panel-title">📋 結果</div>
+            <div class="result-meta" id="result-meta"></div>
+            <div class="result-table-wrapper" id="result-wrapper"></div>
+        </div>
+    </div>
+
+    <script>
+        let SQL = null;
+        let db = null;
+
+        const presets = [
+            { label: '銘柄数', sql: 'SELECT COUNT(*) AS total_stocks FROM stocks;' },
+            { label: '売上トップ20', sql: "SELECT code, name, net_sales/1e8 AS '売上(億)' FROM stocks WHERE net_sales > 0 ORDER BY net_sales DESC LIMIT 20;" },
+            { label: 'ネットネット候補', sql: "SELECT code, name, current_assets, liabilities FROM stocks WHERE current_assets > liabilities * 1.5 AND current_assets > 0 ORDER BY current_assets - liabilities DESC LIMIT 30;" },
+            { label: '業種別銘柄数', sql: "SELECT sector_17, COUNT(*) AS cnt FROM stocks WHERE sector_17 != '' GROUP BY sector_17 ORDER BY cnt DESC;" },
+            { label: '市場区分内訳', sql: "SELECT market_segment, COUNT(*) AS cnt FROM stocks WHERE market_segment != '' GROUP BY market_segment ORDER BY cnt DESC;" },
+            { label: '高ROE銘柄', sql: "SELECT code, name, ROUND(net_income * 100.0 / net_assets, 1) AS roe FROM stocks WHERE net_assets > 0 AND net_income > 0 ORDER BY roe DESC LIMIT 30;" },
+            { label: 'TDNET開示一覧', sql: "SELECT code, disclosure_datetime, title FROM tdnet_disclosures ORDER BY disclosure_datetime DESC LIMIT 30;" },
+            { label: '時系列財務(7203)', sql: "SELECT submission_date, doc_type, net_sales, net_income FROM stock_financials WHERE code = '7203' ORDER BY submission_date DESC LIMIT 20;" },
+        ];
+
+        // sql.js 初期化
+        initSqlJs({
+            locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+        }).then(s => {
+            SQL = s;
+            console.log('✅ sql.js loaded');
+        }).catch(err => {
+            setStatus('error', 'sql.js 初期化失敗: ' + err.message);
+        });
+
+        // プリセットボタン生成
+        const presetContainer = document.getElementById('preset-buttons');
+        presets.forEach(p => {
+            const btn = document.createElement('button');
+            btn.className = 'preset-btn';
+            btn.textContent = p.label;
+            btn.onclick = () => { document.getElementById('sql-input').value = p.sql; };
+            presetContainer.appendChild(btn);
+        });
+
+        // ファイル選択
+        document.getElementById('db-file').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            await loadDBFromBuffer(await file.arrayBuffer(), file.name);
+        });
+
+        // GitHub Release から自動取得
+        document.getElementById('load-release').addEventListener('click', async () => {
+            try {
+                setStatus('info', '📥 最新リリース情報を取得中...');
+                const repo = window.location.hostname.includes('github.io')
+                    ? window.location.pathname.split('/')[1]  // github.io/<repo>/
+                    : 'my_analysis';
+                const owner = window.location.hostname.includes('github.io')
+                    ? window.location.hostname.split('.')[0]
+                    : 'c3drive';
+                const apiRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`);
+                if (!apiRes.ok) throw new Error('リリース取得失敗: ' + apiRes.status);
+                const release = await apiRes.json();
+                const xbrlAsset = release.assets.find(a => a.name === 'xbrl.db.gz');
+                if (!xbrlAsset) throw new Error('xbrl.db.gz が見つかりません');
+
+                setStatus('info', `📥 ${release.tag_name} から xbrl.db.gz をダウンロード中... (${(xbrlAsset.size/1024/1024).toFixed(1)}MB)`);
+                const dlRes = await fetch(xbrlAsset.browser_download_url);
+                if (!dlRes.ok) throw new Error('DLエラー: ' + dlRes.status);
+                const buf = await dlRes.arrayBuffer();
+                await loadDBFromBuffer(buf, 'xbrl.db.gz');
+            } catch (err) {
+                setStatus('error', '❌ ' + err.message);
+            }
+        });
+
+        async function loadDBFromBuffer(buf, name) {
+            try {
+                if (!SQL) {
+                    setStatus('error', 'sql.js 未初期化');
+                    return;
+                }
+                setStatus('info', `📂 ${name} を読み込み中...`);
+
+                let bytes = new Uint8Array(buf);
+                if (name.endsWith('.gz')) {
+                    setStatus('info', `📦 ${name} を解凍中...`);
+                    bytes = pako.ungzip(bytes);
+                }
+
+                if (db) db.close();
+                db = new SQL.Database(bytes);
+
+                // テーブル一覧取得
+                const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+                const tableList = tables.length > 0 ? tables[0].values.map(v => v[0]).join(', ') : '(なし)';
+                setStatus('success', `✅ ${name} 読込完了 (${(bytes.length/1024/1024).toFixed(1)}MB)<br>テーブル: ${tableList}`);
+
+                document.getElementById('run-sql').disabled = false;
+            } catch (err) {
+                setStatus('error', '❌ DB読込失敗: ' + err.message);
+            }
+        }
+
+        function setStatus(type, html) {
+            const el = document.getElementById('db-status');
+            el.className = 'status ' + type;
+            el.innerHTML = html;
+        }
+
+        // SQL 実行
+        document.getElementById('run-sql').addEventListener('click', runSQL);
+        document.getElementById('clear-sql').addEventListener('click', () => {
+            document.getElementById('sql-input').value = '';
+            document.getElementById('result-panel').style.display = 'none';
+        });
+        document.getElementById('sql-input').addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                runSQL();
+            }
+        });
+
+        function runSQL() {
+            if (!db) return;
+            const sql = document.getElementById('sql-input').value.trim();
+            if (!sql) return;
+
+            const start = performance.now();
+            try {
+                const results = db.exec(sql);
+                const elapsed = (performance.now() - start).toFixed(1);
+
+                const panel = document.getElementById('result-panel');
+                const meta = document.getElementById('result-meta');
+                const wrapper = document.getElementById('result-wrapper');
+
+                if (results.length === 0) {
+                    meta.textContent = `✅ 実行完了 (0行返却) - ${elapsed}ms`;
+                    wrapper.innerHTML = '<div style="padding:30px;text-align:center;color:#666;">結果なし (INSERT/UPDATE等で返却列なしの可能性)</div>';
+                } else {
+                    const r = results[0];
+                    meta.textContent = `✅ 実行完了 ${r.values.length}行 × ${r.columns.length}列 - ${elapsed}ms`;
+                    wrapper.innerHTML = renderTable(r);
+                }
+                panel.style.display = '';
+            } catch (err) {
+                document.getElementById('result-panel').style.display = '';
+                document.getElementById('result-meta').textContent = '❌ エラー';
+                document.getElementById('result-wrapper').innerHTML = `<div style="padding:20px;color:#ff6b6b;">${escapeHtml(err.message)}</div>`;
+            }
+        }
+
+        function renderTable(r) {
+            let html = '<table><thead><tr>';
+            r.columns.forEach(c => html += `<th>${escapeHtml(c)}</th>`);
+            html += '</tr></thead><tbody>';
+            r.values.forEach(row => {
+                html += '<tr>';
+                row.forEach(v => {
+                    if (v === null) {
+                        html += '<td class="null">NULL</td>';
+                    } else if (typeof v === 'number') {
+                        html += `<td class="numeric">${v.toLocaleString()}</td>`;
+                    } else {
+                        html += `<td>${escapeHtml(String(v))}</td>`;
+                    }
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        }
+
+        function escapeHtml(s) {
+            return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+    </script>
+</body>
+
+</html>

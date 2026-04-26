@@ -341,10 +341,10 @@
 - [x] GitHub Issue自動作成（new-stockラベル）
 - [x] 銘柄詳細情報をIssue本文に
 
-### 22. ローカルDBファイルアップロード
-- [ ] Choose File ボタン（3ファイル対応）
-- [ ] プログレスバー表示
-- [ ] ダウンロード完了!表示
+### 22. ローカルDBファイルアップロード ✅ 完了 (query.html)
+- [x] Choose File ボタン (.db / .db.gz 対応、pako で gunzip)
+- [x] GitHub Release から自動取得ボタン
+- [x] DB読込状態表示
 
 ---
 
@@ -443,9 +443,11 @@
 
 ## 🟢 低優先度
 
-### 38. sqlite-wasm の対応
-- [ ] ブラウザ内でDB読み込み
-- [ ] クエリ実行
+### 38. sqlite-wasm の対応 ✅ 完了 (query.html)
+- [x] ブラウザ内でDB読み込み (sql.js v1.10.3 + pako で gunzip)
+- [x] クエリ実行 (textarea + Cmd+Enter ショートカット)
+- [x] プリセットクエリ8種 (銘柄数/売上トップ/ネットネット候補/業種別/etc)
+- [x] 結果テーブル表示 (NULL/数値/文字列の型別書式)
 
 ### 39. S3への永続化（オプション）
 - [ ] 生XBRLファイルのS3アップロード
