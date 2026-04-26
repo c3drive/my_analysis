@@ -58,6 +58,17 @@ tasks:
     requires:
       vars: [DATE]
 
+  # 当日の注目銘柄アラート (RS急上昇/業績修正/出来高急増)
+  alerts:
+    desc: "当日のアラート検出 → Markdown 出力 (DATE=YYYY-MM-DD、デフォルトは今日)"
+    cmds:
+      - |
+        if [ -n "{{.DATE}}" ]; then
+          go run . -mode=detect-alerts -date={{.DATE}}
+        else
+          go run . -mode=detect-alerts
+        fi
+
   # JPX 上場銘柄一覧の取込
   # 1. https://www.jpx.co.jp/markets/statistics-equities/misc/01.html から data_j.xls をダウンロード
   # 2. Excel/Numbers で UTF-8 CSV として保存 (例: data/jpx_listed.csv)
