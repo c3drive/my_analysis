@@ -161,3 +161,84 @@ func TestCalcGrowthMetrics_EmptyReturnsNoMetrics(t *testing.T) {
 		t.Errorf("empty records should return all-nil metrics, got %+v", m)
 	}
 }
+
+func TestCalcPiotroskiF9_PerfectScore(t *testing.T) {
+	// 全項目で改善している優良企業
+	records := []financialRecord{
+		// 当期 (2026)
+		{docType: "120", submissionDate: mustDate(t, "2026-06-25"),
+			netIncome: 200_000_000, netSales: 3_000_000_000, sharesIssued: 1_000_000,
+			totalAssets: 2_000_000_000, nonCurrentLiabilities: 200_000_000,
+			currentAssets: 1_500_000_000, currentLiabilities: 500_000_000,
+			operatingCashFlow: 300_000_000, grossProfit: 1_200_000_000},
+		// 前期 (2025)
+		{docType: "120", submissionDate: mustDate(t, "2025-06-20"),
+			netIncome: 100_000_000, netSales: 2_500_000_000, sharesIssued: 1_000_000,
+			totalAssets: 1_900_000_000, nonCurrentLiabilities: 300_000_000,
+			currentAssets: 1_200_000_000, currentLiabilities: 600_000_000,
+			operatingCashFlow: 150_000_000, grossProfit: 800_000_000},
+	}
+	f := calcPiotroskiF9(records)
+	if f.Score != 9 {
+		t.Errorf("Score = %d, want 9. detail=%+v", f.Score, f)
+	}
+	if f.Available != 9 {
+		t.Errorf("Available = %d, want 9", f.Available)
+	}
+}
+
+func TestCalcPiotroskiF9_AllFail(t *testing.T) {
+	// 当期は赤字・CFOマイナス・粗利減・希薄化・負債増・流動比率悪化・回転率低下
+	records := []financialRecord{
+		{docType: "120", submissionDate: mustDate(t, "2026-06-25"),
+			netIncome: -50_000_000, netSales: 2_000_000_000, sharesIssued: 1_500_000,
+			totalAssets: 2_500_000_000, nonCurrentLiabilities: 800_000_000,
+			currentAssets: 800_000_000, currentLiabilities: 1_000_000_000,
+			operatingCashFlow: -100_000_000, grossProfit: 400_000_000},
+		{docType: "120", submissionDate: mustDate(t, "2025-06-20"),
+			netIncome: 100_000_000, netSales: 2_500_000_000, sharesIssued: 1_000_000,
+			totalAssets: 2_000_000_000, nonCurrentLiabilities: 400_000_000,
+			currentAssets: 1_200_000_000, currentLiabilities: 500_000_000,
+			operatingCashFlow: 200_000_000, grossProfit: 1_000_000_000},
+	}
+	f := calcPiotroskiF9(records)
+	if f.Score != 0 {
+		t.Errorf("Score = %d, want 0. detail=%+v", f.Score, f)
+	}
+	// AccrualsGood: CFO=-100M, NetIncome=-50M → -100M > -50M = false
+	if f.AccrualsGood {
+		t.Errorf("AccrualsGood should be false")
+	}
+}
+
+func TestCalcPiotroskiF9_NoAnnual(t *testing.T) {
+	// 通期がない (四半期だけ) → 何も計算できない
+	records := []financialRecord{
+		{docType: "140", submissionDate: mustDate(t, "2026-04-15"),
+			netIncome: 100, totalAssets: 1000, operatingCashFlow: 200},
+	}
+	f := calcPiotroskiF9(records)
+	if f.Score != 0 || f.Available != 0 {
+		t.Errorf("expected zero values when no annual, got Score=%d Available=%d", f.Score, f.Available)
+	}
+}
+
+func TestCalcPiotroskiF9_OnlyOneYear(t *testing.T) {
+	// 1期分のみ → ROA/CFO/Accruals の3項目のみ計算可能
+	records := []financialRecord{
+		{docType: "120", submissionDate: mustDate(t, "2026-06-25"),
+			netIncome: 100_000_000, totalAssets: 1_000_000_000,
+			operatingCashFlow: 200_000_000},
+	}
+	f := calcPiotroskiF9(records)
+	// Available = ROA(1) + CFO(1) + Accruals(1) = 3
+	if f.Available != 3 {
+		t.Errorf("Available = %d, want 3", f.Available)
+	}
+	if !f.ROAPositive || !f.CFOPositive || !f.AccrualsGood {
+		t.Errorf("expected ROA/CFO/Accruals all true, got %+v", f)
+	}
+	if f.Score != 3 {
+		t.Errorf("Score = %d, want 3", f.Score)
+	}
+}

@@ -16,11 +16,17 @@ type GrowthMetrics struct {
 }
 
 type financialRecord struct {
-	docType        string
-	submissionDate time.Time
-	netIncome      int64
-	netSales       int64
-	sharesIssued   int64
+	docType               string
+	submissionDate        time.Time
+	netIncome             int64
+	netSales              int64
+	sharesIssued          int64
+	totalAssets           int64
+	nonCurrentLiabilities int64
+	currentAssets         int64
+	currentLiabilities    int64
+	operatingCashFlow     int64
+	grossProfit           int64
 }
 
 func (r financialRecord) eps() float64 {
@@ -35,7 +41,10 @@ func (r financialRecord) eps() float64 {
 func loadAllFinancials(db *sql.DB) (map[string][]financialRecord, error) {
 	rows, err := db.Query(`
 		SELECT code, doc_type, submission_date,
-		       COALESCE(net_income, 0), COALESCE(net_sales, 0), COALESCE(shares_issued, 0)
+		       COALESCE(net_income, 0), COALESCE(net_sales, 0), COALESCE(shares_issued, 0),
+		       COALESCE(total_assets, 0), COALESCE(non_current_liabilities, 0),
+		       COALESCE(current_assets, 0), COALESCE(current_liabilities, 0),
+		       COALESCE(operating_cash_flow, 0), COALESCE(gross_profit, 0)
 		FROM stock_financials
 		ORDER BY code ASC, submission_date DESC`)
 	if err != nil {
@@ -48,7 +57,11 @@ func loadAllFinancials(db *sql.DB) (map[string][]financialRecord, error) {
 		var code string
 		var r financialRecord
 		var dateStr string
-		if err := rows.Scan(&code, &r.docType, &dateStr, &r.netIncome, &r.netSales, &r.sharesIssued); err != nil {
+		if err := rows.Scan(&code, &r.docType, &dateStr,
+			&r.netIncome, &r.netSales, &r.sharesIssued,
+			&r.totalAssets, &r.nonCurrentLiabilities,
+			&r.currentAssets, &r.currentLiabilities,
+			&r.operatingCashFlow, &r.grossProfit); err != nil {
 			continue
 		}
 		if len(dateStr) < 10 {
@@ -156,4 +169,136 @@ func yoyPctInt(current, prior int64) *float64 {
 	}
 	v := float64(current-prior) / math.Abs(float64(prior)) * 100
 	return &v
+}
+
+// PiotroskiF9 は Piotroski F-Score (9点満点) の内訳
+type PiotroskiF9 struct {
+	Score          int  `json:"Score"`           // 0-9
+	Available      int  `json:"Available"`       // 計算可能だった項目数 (0-9)
+	ROAPositive    bool `json:"ROAPositive"`     // 1. ROA > 0
+	ROAImproved    bool `json:"ROAImproved"`     // 2. ΔROA > 0
+	CFOPositive    bool `json:"CFOPositive"`     // 3. CFO > 0
+	AccrualsGood   bool `json:"AccrualsGood"`    // 4. CFO > NetIncome
+	LeverageDown   bool `json:"LeverageDown"`    // 5. Δ長期負債率 < 0
+	CurrentRatioUp bool `json:"CurrentRatioUp"`  // 6. Δ流動比率 > 0
+	NoDilution     bool `json:"NoDilution"`      // 7. 希薄化なし (発行済株式数 ≤ 前期)
+	GrossMarginUp  bool `json:"GrossMarginUp"`   // 8. Δ粗利率 > 0
+	AssetTurnUp    bool `json:"AssetTurnUp"`     // 9. Δ資産回転率 > 0
+}
+
+// calcPiotroskiF9 は通期決算 (有報) の最新2期を比較して F-Score を算出する
+// records は loadAllFinancials の出力 (submission_date DESC) を想定
+// 通期 (docType=120/130) のみを使う。前期データが無い項目は false 扱いだが、Available にカウントされない
+func calcPiotroskiF9(records []financialRecord) PiotroskiF9 {
+	var annual []financialRecord
+	for _, r := range records {
+		if r.docType == "120" || r.docType == "130" {
+			annual = append(annual, r)
+		}
+	}
+
+	var f PiotroskiF9
+	if len(annual) == 0 {
+		return f
+	}
+	cur := annual[0]
+
+	// 1. ROA > 0 (前期不要)
+	if cur.totalAssets > 0 {
+		f.Available++
+		if float64(cur.netIncome)/float64(cur.totalAssets) > 0 {
+			f.ROAPositive = true
+			f.Score++
+		}
+	}
+
+	// 3. CFO > 0 (前期不要)
+	if cur.operatingCashFlow != 0 {
+		f.Available++
+		if cur.operatingCashFlow > 0 {
+			f.CFOPositive = true
+			f.Score++
+		}
+	}
+
+	// 4. Accruals: CFO > NetIncome (前期不要、両方データが必要)
+	if cur.operatingCashFlow != 0 && cur.netIncome != 0 {
+		f.Available++
+		if cur.operatingCashFlow > cur.netIncome {
+			f.AccrualsGood = true
+			f.Score++
+		}
+	}
+
+	// 前期データが取れない場合は ΔXX系をスキップ
+	if len(annual) < 2 {
+		return f
+	}
+	prev := annual[1]
+
+	// 2. ΔROA > 0
+	if cur.totalAssets > 0 && prev.totalAssets > 0 {
+		f.Available++
+		curROA := float64(cur.netIncome) / float64(cur.totalAssets)
+		prevROA := float64(prev.netIncome) / float64(prev.totalAssets)
+		if curROA > prevROA {
+			f.ROAImproved = true
+			f.Score++
+		}
+	}
+
+	// 5. Δ長期負債率 < 0
+	if cur.totalAssets > 0 && prev.totalAssets > 0 && cur.nonCurrentLiabilities > 0 && prev.nonCurrentLiabilities > 0 {
+		f.Available++
+		curLev := float64(cur.nonCurrentLiabilities) / float64(cur.totalAssets)
+		prevLev := float64(prev.nonCurrentLiabilities) / float64(prev.totalAssets)
+		if curLev < prevLev {
+			f.LeverageDown = true
+			f.Score++
+		}
+	}
+
+	// 6. Δ流動比率 > 0
+	if cur.currentLiabilities > 0 && prev.currentLiabilities > 0 && cur.currentAssets > 0 && prev.currentAssets > 0 {
+		f.Available++
+		curCR := float64(cur.currentAssets) / float64(cur.currentLiabilities)
+		prevCR := float64(prev.currentAssets) / float64(prev.currentLiabilities)
+		if curCR > prevCR {
+			f.CurrentRatioUp = true
+			f.Score++
+		}
+	}
+
+	// 7. 希薄化なし
+	if cur.sharesIssued > 0 && prev.sharesIssued > 0 {
+		f.Available++
+		if cur.sharesIssued <= prev.sharesIssued {
+			f.NoDilution = true
+			f.Score++
+		}
+	}
+
+	// 8. Δ粗利率 > 0
+	if cur.netSales > 0 && prev.netSales > 0 && cur.grossProfit > 0 && prev.grossProfit > 0 {
+		f.Available++
+		curGM := float64(cur.grossProfit) / float64(cur.netSales)
+		prevGM := float64(prev.grossProfit) / float64(prev.netSales)
+		if curGM > prevGM {
+			f.GrossMarginUp = true
+			f.Score++
+		}
+	}
+
+	// 9. Δ資産回転率 > 0
+	if cur.totalAssets > 0 && prev.totalAssets > 0 && cur.netSales > 0 && prev.netSales > 0 {
+		f.Available++
+		curTO := float64(cur.netSales) / float64(cur.totalAssets)
+		prevTO := float64(prev.netSales) / float64(prev.totalAssets)
+		if curTO > prevTO {
+			f.AssetTurnUp = true
+			f.Score++
+		}
+	}
+
+	return f
 }
