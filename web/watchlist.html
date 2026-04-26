@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ウォッチリスト | 株式分析ダッシュボード</title>
+    <meta name="description" content="お気に入り銘柄の一覧。localStorage に保存。">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh; color: #e0e0e0;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 30px; }
+        header {
+            background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px);
+            border-radius: 16px; padding: 30px; margin-bottom: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        h1 {
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, #ffd93d, #ff6b6b);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 10px;
+        }
+        .subtitle { color: #a0a0a0; font-size: 0.95rem; }
+        .nav { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .nav a {
+            color: #00d9ff; text-decoration: none; padding: 8px 16px; border-radius: 8px;
+            background: rgba(0, 217, 255, 0.1); border: 1px solid rgba(0, 217, 255, 0.3);
+            font-size: 0.85rem; transition: all 0.2s;
+        }
+        .nav a:hover, .nav a.active {
+            background: rgba(255, 217, 61, 0.2); border-color: #ffd93d; color: #ffd93d;
+        }
+        .info-box {
+            background: rgba(255, 217, 61, 0.08);
+            border: 1px solid rgba(255, 217, 61, 0.25);
+            border-radius: 12px; padding: 18px 22px; margin-bottom: 24px;
+            color: #ccc; line-height: 1.7; font-size: 0.9rem;
+        }
+        .info-box strong { color: #ffd93d; }
+
+        .toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+        .add-input {
+            padding: 8px 12px; background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
+            color: #e0e0e0; font-size: 0.85rem; width: 120px;
+        }
+        .btn {
+            padding: 8px 16px; border-radius: 8px; cursor: pointer;
+            font-size: 0.85rem; font-weight: 600; border: 1px solid;
+            transition: all 0.2s;
+        }
+        .btn-add { background: rgba(0,255,136,0.12); color: #00ff88; border-color: rgba(0,255,136,0.4); }
+        .btn-add:hover { background: rgba(0,255,136,0.2); }
+        .btn-clear { background: rgba(255,107,107,0.08); color: #ff6b6b; border-color: rgba(255,107,107,0.3); }
+        .btn-clear:hover { background: rgba(255,107,107,0.18); }
+
+        .table-wrapper {
+            background: rgba(255, 255, 255, 0.03); border-radius: 12px;
+            overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            background: rgba(255, 217, 61, 0.15); color: #ffd93d;
+            padding: 12px 14px; text-align: left; font-weight: 600; font-size: 0.85rem;
+        }
+        td { padding: 10px 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.88rem; }
+        tr:hover { background: rgba(255, 217, 61, 0.04); }
+        .code-cell { font-family: monospace; color: #00d9ff; font-weight: 600; }
+        .code-link { color: #00d9ff; text-decoration: none; }
+        .code-link:hover { text-decoration: underline; }
+        .number-cell { text-align: right; font-family: monospace; }
+        .value-good { color: #00ff88; }
+        .value-bad { color: #ff4466; }
+        .no-data { color: #555; }
+        .remove-btn {
+            background: none; border: none; color: #888; cursor: pointer;
+            font-size: 1rem; padding: 2px 6px;
+        }
+        .remove-btn:hover { color: #ff4466; }
+        .empty-state { text-align: center; padding: 60px 20px; color: #666; }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 12px; }
+
+        @media (max-width: 768px) {
+            .container { padding: 12px !important; }
+            header { padding: 16px !important; }
+            h1 { font-size: 1.3rem !important; }
+            .nav a { padding: 5px 9px !important; font-size: 0.72rem !important; }
+            .table-wrapper { overflow-x: auto !important; }
+            table { min-width: 700px; font-size: 0.78rem !important; }
+            th, td { padding: 6px 8px !important; }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>⭐ ウォッチリスト</h1>
+            <p class="subtitle">お気に入り銘柄を localStorage に保存して一覧表示</p>
+            <nav class="nav">
+                <a href="index.html">📊 基本ダッシュボード</a>
+                <a href="net-net-value.html">💎 ネットネット分析</a>
+                <a href="oneil-screen.html">🚀 オニールスクリーニング</a>
+                <a href="market-top.html">📈 マーケット天井検出</a>
+                <a href="query.html">🔍 SQL クエリ</a>
+                <a href="watchlist.html" class="active">⭐ ウォッチリスト</a>
+            </nav>
+        </header>
+
+        <div class="info-box">
+            <strong>📖 この画面でできること</strong><br>
+            気になる銘柄を保存して並べて比較できる。<br>
+            <strong>追加方法:</strong> 下の入力欄にコードを入れる、または銘柄詳細の「⭐ 追加」ボタン。<br>
+            <strong>保存場所:</strong> ブラウザの localStorage (端末ごと、サーバーには送信されない)。
+        </div>
+
+        <div class="toolbar">
+            <input type="text" id="add-code" class="add-input" placeholder="例: 7203" maxlength="4">
+            <button class="btn btn-add" onclick="addCode()">⭐ 追加</button>
+            <button class="btn btn-clear" onclick="clearAll()">🗑️ 全削除</button>
+            <span id="status" style="color:#888;font-size:0.82rem;margin-left:auto;"></span>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>コード</th>
+                        <th>企業名</th>
+                        <th>市場</th>
+                        <th>業種</th>
+                        <th class="number-cell">株価</th>
+                        <th class="number-cell">PER</th>
+                        <th class="number-cell">PBR</th>
+                        <th class="number-cell">ROE%</th>
+                        <th class="number-cell">RS</th>
+                        <th class="number-cell">ネットネット</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="tbody">
+                    <tr><td colspan="11" class="empty-state"><div class="empty-state-icon">📭</div>ウォッチリストが空です</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'stock_watchlist_v1';
+
+        function getList() {
+            try {
+                return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+            } catch (e) {
+                return [];
+            }
+        }
+        function saveList(list) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+        }
+        function addCode() {
+            const input = document.getElementById('add-code');
+            const code = input.value.trim();
+            if (!/^\d{4}$/.test(code)) { alert('4桁の証券コードを入れてください'); return; }
+            const list = getList();
+            if (list.includes(code)) { alert('既に追加済み'); return; }
+            list.push(code);
+            saveList(list);
+            input.value = '';
+            render();
+        }
+        function removeCode(code) {
+            saveList(getList().filter(c => c !== code));
+            render();
+        }
+        function clearAll() {
+            if (!confirm('全削除しますか?')) return;
+            saveList([]);
+            render();
+        }
+
+        async function render() {
+            const list = getList();
+            const tbody = document.getElementById('tbody');
+            const status = document.getElementById('status');
+
+            if (list.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" class="empty-state"><div class="empty-state-icon">📭</div>ウォッチリストが空です</td></tr>';
+                status.textContent = '';
+                return;
+            }
+
+            status.textContent = '読込中...';
+            // /api/stocks → stocks.json フォールバック
+            let stocks = null;
+            try {
+                const r = await fetch('/api/stocks');
+                if (r.ok) stocks = await r.json();
+            } catch (e) {}
+            if (!stocks) {
+                try {
+                    const r = await fetch('stocks.json');
+                    if (r.ok) stocks = await r.json();
+                } catch (e) {}
+            }
+            if (!stocks) {
+                status.textContent = '⚠️ データ取得失敗';
+                return;
+            }
+
+            const map = {};
+            stocks.forEach(s => map[s.Code] = s);
+            const items = list.map(c => map[c] || { Code: c, Name: '(データなし)' });
+
+            tbody.innerHTML = items.map(s => {
+                const fmt = (v, suffix='', digits=1) => v == null ? '<span class="no-data">-</span>' : v.toFixed(digits) + suffix;
+                const fmtSign = (v, suffix='', digits=1) => {
+                    if (v == null) return '<span class="no-data">-</span>';
+                    const cls = v >= 0 ? 'value-good' : 'value-bad';
+                    return `<span class="${cls}">${v.toFixed(digits)}${suffix}</span>`;
+                };
+                return `
+                    <tr>
+                        <td class="code-cell"><a class="code-link" href="stock-detail.html?code=${s.Code}&from=watchlist.html">${s.Code}</a></td>
+                        <td>${s.Name || '-'}</td>
+                        <td style="font-size:0.78rem;color:#aaa;">${s.MarketSegment || '-'}</td>
+                        <td style="font-size:0.78rem;color:#aaa;">${s.Sector33 || '-'}</td>
+                        <td class="number-cell">${s.LastPrice ? Math.round(s.LastPrice).toLocaleString() : '<span class="no-data">-</span>'}</td>
+                        <td class="number-cell">${fmt(s.PER, '倍')}</td>
+                        <td class="number-cell">${fmt(s.PBR, '倍', 2)}</td>
+                        <td class="number-cell">${fmtSign(s.ROE, '%')}</td>
+                        <td class="number-cell">${s.RS != null ? Math.round(s.RS) : '<span class="no-data">-</span>'}</td>
+                        <td class="number-cell">${fmt(s.NetNetRatio, '', 2)}</td>
+                        <td><button class="remove-btn" onclick="removeCode('${s.Code}')" title="削除">✕</button></td>
+                    </tr>
+                `;
+            }).join('');
+            status.textContent = `${items.length} 件`;
+        }
+
+        document.getElementById('add-code').addEventListener('keydown', e => {
+            if (e.key === 'Enter') addCode();
+        });
+        render();
+    </script>
+</body>
+
+</html>

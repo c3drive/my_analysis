@@ -454,6 +454,7 @@
                 <a href="oneil-screen.html" class="active">🚀 オニールスクリーニング</a>
                 <a href="market-top.html">📈 マーケット天井検出</a>
                 <a href="query.html">🔍 SQL クエリ</a>
+                <a href="watchlist.html">⭐ ウォッチリスト</a>
             </nav>
         </header>
 
@@ -497,6 +498,22 @@
                 <span class="status-value" id="last-update">-</span>
             </div>
         </div>
+
+        <details style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 18px;margin-bottom:24px;">
+            <summary style="cursor:pointer;color:#e0e0e0;font-weight:600;font-size:0.95rem;">📅 過去比較 (スナップショット保存 + 差分表示)</summary>
+            <div style="margin-top:12px;color:#aaa;font-size:0.85rem;line-height:1.6;">
+                <p>現在のオニールスコアの上位30銘柄を localStorage に保存し、後日差分を確認できる。</p>
+                <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center;">
+                    <button onclick="saveSnapshot()" style="padding:6px 14px;background:rgba(0,255,136,0.12);color:#00ff88;border:1px solid rgba(0,255,136,0.4);border-radius:6px;cursor:pointer;font-size:0.85rem;">💾 現状を保存 (上位30件)</button>
+                    <select id="snapshot-select" style="padding:6px 10px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);color:#e0e0e0;border-radius:6px;font-size:0.82rem;">
+                        <option value="">過去のスナップショットを選択...</option>
+                    </select>
+                    <button onclick="compareSnapshot()" style="padding:6px 14px;background:rgba(0,217,255,0.12);color:#00d9ff;border:1px solid rgba(0,217,255,0.4);border-radius:6px;cursor:pointer;font-size:0.85rem;">🔀 比較</button>
+                    <button onclick="deleteSnapshot()" style="padding:6px 14px;background:rgba(255,107,107,0.08);color:#ff6b6b;border:1px solid rgba(255,107,107,0.3);border-radius:6px;cursor:pointer;font-size:0.85rem;">🗑️ 削除</button>
+                </div>
+                <div id="diff-result" style="margin-top:14px;"></div>
+            </div>
+        </details>
 
         <div class="filter-bar" id="filter-bar">
             <div class="filter-group">
@@ -915,6 +932,105 @@
 
         // 初期読み込み
         loadData();
+
+        // ==============================================================
+        // 過去比較スナップショット (localStorage)
+        // ==============================================================
+        const SNAPSHOT_KEY = 'oneil_snapshots_v1';
+
+        function getSnapshots() {
+            try { return JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || '{}'); } catch (e) { return {}; }
+        }
+        function setSnapshots(s) { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(s)); }
+
+        function refreshSnapshotSelect() {
+            const sel = document.getElementById('snapshot-select');
+            const snaps = getSnapshots();
+            const keys = Object.keys(snaps).sort().reverse();
+            sel.innerHTML = '<option value="">過去のスナップショットを選択...</option>';
+            keys.forEach(k => {
+                const opt = document.createElement('option');
+                opt.value = k;
+                opt.textContent = `${k} (${snaps[k].length}件)`;
+                sel.appendChild(opt);
+            });
+        }
+
+        function saveSnapshot() {
+            if (!allStocksData || allStocksData.length === 0) {
+                alert('データ未読込');
+                return;
+            }
+            const top = [...allStocksData].sort((a, b) => (b.Score || 0) - (a.Score || 0)).slice(0, 30);
+            const compact = top.map((s, i) => ({
+                rank: i + 1, code: s.Code, name: s.Name, score: s.Score,
+                roe: s.ROE, rs: s.RS, q0: s.Q0EPSYoY,
+            }));
+            const snaps = getSnapshots();
+            const key = new Date().toISOString().slice(0, 10);
+            snaps[key] = compact;
+            setSnapshots(snaps);
+            refreshSnapshotSelect();
+            document.getElementById('diff-result').innerHTML = `<div style="color:#00ff88;">✅ ${key} のスナップショットを保存 (上位${compact.length}件)</div>`;
+        }
+
+        function deleteSnapshot() {
+            const key = document.getElementById('snapshot-select').value;
+            if (!key) { alert('スナップショットを選択してください'); return; }
+            if (!confirm(`${key} のスナップショットを削除しますか?`)) return;
+            const snaps = getSnapshots();
+            delete snaps[key];
+            setSnapshots(snaps);
+            refreshSnapshotSelect();
+            document.getElementById('diff-result').innerHTML = '';
+        }
+
+        function compareSnapshot() {
+            const key = document.getElementById('snapshot-select').value;
+            if (!key) { alert('スナップショットを選択してください'); return; }
+            const snaps = getSnapshots();
+            const past = snaps[key];
+            if (!past) return;
+
+            const currentTop = [...allStocksData].sort((a, b) => (b.Score || 0) - (a.Score || 0)).slice(0, 30);
+            const currentMap = {};
+            currentTop.forEach((s, i) => currentMap[s.Code] = { rank: i + 1, score: s.Score, name: s.Name });
+            const pastMap = {};
+            past.forEach(s => pastMap[s.code] = s);
+
+            const newComers = currentTop.filter(s => !pastMap[s.Code]);
+            const dropouts = past.filter(s => !currentMap[s.code]);
+            const moved = currentTop.filter(s => pastMap[s.Code]).map(s => ({
+                code: s.Code, name: s.Name,
+                rankNow: currentMap[s.Code].rank,
+                rankPast: pastMap[s.Code].rank,
+                delta: pastMap[s.Code].rank - currentMap[s.Code].rank, // 正なら順位アップ
+            }));
+
+            let html = `<div style="color:#aaa;margin-bottom:8px;">比較: ${key} → 現在 (上位30件で照合)</div>`;
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">';
+
+            html += `<div style="background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.3);border-radius:8px;padding:12px;">
+                <div style="color:#00ff88;font-weight:600;margin-bottom:6px;">🆕 新規ランクイン (${newComers.length})</div>
+                ${newComers.length === 0 ? '<div style="color:#666;font-size:0.85rem;">なし</div>' : '<ul style="list-style:none;padding-left:0;font-size:0.82rem;color:#ccc;">' + newComers.map((s,i) => `<li>#${i+1} <span style="color:#00d9ff;">${s.Code}</span> ${s.Name}</li>`).join('') + '</ul>'}
+            </div>`;
+
+            const upMoves = moved.filter(m => m.delta > 0).sort((a,b) => b.delta - a.delta).slice(0, 10);
+            html += `<div style="background:rgba(0,217,255,0.06);border:1px solid rgba(0,217,255,0.3);border-radius:8px;padding:12px;">
+                <div style="color:#00d9ff;font-weight:600;margin-bottom:6px;">⬆️ 順位アップ (${upMoves.length})</div>
+                ${upMoves.length === 0 ? '<div style="color:#666;font-size:0.85rem;">なし</div>' : '<ul style="list-style:none;padding-left:0;font-size:0.82rem;color:#ccc;">' + upMoves.map(m => `<li><span style="color:#00d9ff;">${m.code}</span> ${m.name} <span style="color:#00ff88;">(+${m.delta})</span></li>`).join('') + '</ul>'}
+            </div>`;
+
+            html += `<div style="background:rgba(255,107,107,0.06);border:1px solid rgba(255,107,107,0.3);border-radius:8px;padding:12px;">
+                <div style="color:#ff6b6b;font-weight:600;margin-bottom:6px;">📉 脱落 (${dropouts.length})</div>
+                ${dropouts.length === 0 ? '<div style="color:#666;font-size:0.85rem;">なし</div>' : '<ul style="list-style:none;padding-left:0;font-size:0.82rem;color:#ccc;">' + dropouts.map(s => `<li>過去#${s.rank} <span style="color:#00d9ff;">${s.code}</span> ${s.name}</li>`).join('') + '</ul>'}
+            </div>`;
+
+            html += '</div>';
+            document.getElementById('diff-result').innerHTML = html;
+        }
+
+        refreshSnapshotSelect();
 
         // 指標解説ポップアップ
         const METRIC_INFO = {

@@ -495,6 +495,8 @@
         <a href="oneil-screen.html">オニール</a>
         <a href="market-top.html">天井検出</a>
         <a href="query.html">SQLクエリ</a>
+        <a href="watchlist.html">⭐ ウォッチリスト</a>
+        <button id="watch-toggle" onclick="toggleWatch()" style="margin-left:auto;padding:6px 14px;border:1px solid rgba(255,217,61,0.4);background:rgba(255,217,61,0.08);color:#ffd93d;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:600;">⭐ ウォッチに追加</button>
     </nav>
 
     <div class="container">
@@ -1506,6 +1508,36 @@
             createMainSeries();
             updateMASeries();
         });
+
+        // ウォッチリスト toggle
+        const WATCH_KEY = 'stock_watchlist_v1';
+        function getWatchList() {
+            try { return JSON.parse(localStorage.getItem(WATCH_KEY) || '[]'); } catch (e) { return []; }
+        }
+        function updateWatchButton() {
+            const btn = document.getElementById('watch-toggle');
+            if (!btn || !stockCode) return;
+            const list = getWatchList();
+            if (list.includes(stockCode)) {
+                btn.textContent = '⭐ ウォッチ済み';
+                btn.style.background = 'rgba(255,217,61,0.25)';
+            } else {
+                btn.textContent = '⭐ ウォッチに追加';
+                btn.style.background = 'rgba(255,217,61,0.08)';
+            }
+        }
+        function toggleWatch() {
+            if (!stockCode) return;
+            let list = getWatchList();
+            if (list.includes(stockCode)) {
+                list = list.filter(c => c !== stockCode);
+            } else {
+                list.push(stockCode);
+            }
+            localStorage.setItem(WATCH_KEY, JSON.stringify(list));
+            updateWatchButton();
+        }
+        updateWatchButton();
 
         // 初期化
         if (stockCode) {
