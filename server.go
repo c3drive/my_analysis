@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -190,7 +191,11 @@ func startServer() {
 			stocks = append(stocks, s)
 		}
 
-		body, _ := json.Marshal(stocks)
+		body, err := json.Marshal(stocks)
+		if err != nil {
+			http.Error(w, "json marshal: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		cacheSet("api:stocks", body, 60*time.Second)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Cache", "MISS")
@@ -596,16 +601,14 @@ func startServer() {
 			stocks = append(stocks, os)
 		}
 
-		// スコア順でソート
-		for i := 0; i < len(stocks)-1; i++ {
-			for j := i + 1; j < len(stocks); j++ {
-				if stocks[j].Score > stocks[i].Score {
-					stocks[i], stocks[j] = stocks[j], stocks[i]
-				}
-			}
-		}
+		// スコア順でソート (バブルソート → sort.Slice で O(n²) → O(n log n))
+		sort.Slice(stocks, func(i, j int) bool { return stocks[i].Score > stocks[j].Score })
 
-		body, _ := json.Marshal(stocks)
+		body, err := json.Marshal(stocks)
+		if err != nil {
+			http.Error(w, "json marshal: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		cacheSet("api:oneil-ranking", body, 60*time.Second)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Cache", "MISS")
@@ -733,11 +736,12 @@ func startServer() {
 		}
 		defer db.Close()
 
-		// 全期間の株価データを返す（市場天井検出は長期データが必要）
+		// 直近2年分に制限 (市場天井検出には十分。全期間は数十万行で重い)
 		rows, err := db.Query(`
 			SELECT code, date, open, high, low, close, volume
 			FROM price_db.stock_prices
 			WHERE code = ?
+			  AND date >= date('now', '-730 days')
 			ORDER BY date ASC`, code)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

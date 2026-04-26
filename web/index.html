@@ -788,10 +788,11 @@
                                  segText.includes('スタンダード') ? 'value-ok' :
                                  segText.includes('グロース') ? '' : 'no-data';
                 const sectorText = stock.Sector33 || '-';
+                const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
                 tr.innerHTML = `
-                    <td class="code-cell"><a class="code-link" href="stock-detail.html?code=${stock.Code}&from=index.html">${stock.Code}</a></td>
-                    <td class="name-cell" title="${stock.Name}"><a class="code-link" href="stock-detail.html?code=${stock.Code}&from=index.html">${stock.Name}</a></td>
+                    <td class="code-cell"><a class="code-link" href="stock-detail.html?code=${esc(stock.Code)}&from=index.html">${esc(stock.Code)}</a></td>
+                    <td class="name-cell" title="${esc(stock.Name)}"><a class="code-link" href="stock-detail.html?code=${esc(stock.Code)}&from=index.html">${esc(stock.Name)}</a></td>
                     <td class="number-cell metric-cell ${priceClass}" data-metric="LastPrice">${priceText}</td>
                     <td class="number-cell metric-cell ${marketCap.class}" data-metric="MarketCap">${marketCap.text}</td>
                     <td class="number-cell metric-cell ${eps.class}" data-metric="EPS">${eps.text}</td>
@@ -801,11 +802,11 @@
                     <td class="number-cell metric-cell ${equityRatio.class}" data-metric="EquityRatio">${equityRatio.text}</td>
                     <td class="number-cell metric-cell ${netNet.class}" data-metric="NetNetRatio">${netNet.text}</td>
                     <td class="number-cell metric-cell ${rs.class}" data-metric="RS">${rs.text}</td>
-                    <td class="number-cell ${segClass}" style="font-size:0.8rem;">${segText}</td>
-                    <td class="name-cell" title="${sectorText}" style="font-size:0.8rem;max-width:120px;">${sectorText}</td>
+                    <td class="number-cell ${segClass}" style="font-size:0.8rem;">${esc(segText)}</td>
+                    <td class="name-cell" title="${esc(sectorText)}" style="font-size:0.8rem;max-width:120px;">${esc(sectorText)}</td>
                     <td class="number-cell metric-cell ${sales.class}" data-metric="NetSales">${sales.text}</td>
                     <td class="number-cell metric-cell ${netIncome.class}" data-metric="NetIncome">${netIncome.text}</td>
-                    <td class="date-cell">${stock.UpdatedAt ? stock.UpdatedAt.substring(0, 10) : '-'}</td>
+                    <td class="date-cell">${stock.UpdatedAt ? esc(stock.UpdatedAt.substring(0, 10)) : '-'}</td>
                 `;
                 tbody.appendChild(tr);
             });

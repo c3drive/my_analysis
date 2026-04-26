@@ -1447,17 +1447,22 @@
             document.getElementById('disclosures-section').style.display = '';
 
             const list = document.getElementById('disclosures-list');
+            const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            // pdf_url は https://www.release.tdnet.info/ のみ許可 (XSS対策)
+            const safeUrl = (u) => (typeof u === 'string' && /^https:\/\/www\.release\.tdnet\.info\//.test(u)) ? u : '';
+
             list.innerHTML = disclosuresData.map(d => {
-                const isEarnings = /決算|短信|業績/.test(d.title);
+                const isEarnings = /決算|短信|業績/.test(d.title || '');
                 const accent = isEarnings ? '#00ff88' : '#888';
-                const pdfLink = d.pdf_url
-                    ? `<a href="${d.pdf_url}" target="_blank" rel="noopener noreferrer" style="color:#00d9ff;text-decoration:none;font-size:0.78rem;margin-left:8px;">📄 PDF</a>`
+                const url = safeUrl(d.pdf_url);
+                const pdfLink = url
+                    ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" style="color:#00d9ff;text-decoration:none;font-size:0.78rem;margin-left:8px;">📄 PDF</a>`
                     : '';
                 return `
                     <div style="background:rgba(0,0,0,0.2);border-left:3px solid ${accent};border-radius:4px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
                         <div style="flex:1;min-width:0;">
-                            <div style="color:#888;font-size:0.7rem;margin-bottom:2px;">${d.disclosure_datetime}${d.doc_category ? ' · ' + d.doc_category : ''}</div>
-                            <div style="color:#e0e0e0;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.title}</div>
+                            <div style="color:#888;font-size:0.7rem;margin-bottom:2px;">${esc(d.disclosure_datetime)}${d.doc_category ? ' · ' + esc(d.doc_category) : ''}</div>
+                            <div style="color:#e0e0e0;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(d.title)}</div>
                         </div>
                         ${pdfLink}
                     </div>

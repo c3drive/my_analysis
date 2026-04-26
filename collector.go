@@ -207,4 +207,7 @@ func runCollector(targetDate string) {
 			fmt.Printf("  %s: %d/%d (%.1f%%)\n", field, fieldStats[field], totalParsed, rate)
 		}
 	}
+
+	// データが更新されたので、API レスポンスキャッシュを破棄
+	cacheClear()
 }

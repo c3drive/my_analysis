@@ -857,11 +857,12 @@
                 const cagr = formatGrowth(stock.EPS3YCAGR, 15);
 
                 const sectorText = stock.Sector33 || '-';
+                const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
                 tr.innerHTML = `
                     <td class="rank-cell ${getRankClass(rank)}">${rank}</td>
                     <td class="score-cell metric-cell ${getScoreClass(stock.Score)}" data-metric="Score">${stock.Score.toFixed(0)}</td>
-                    <td class="code-cell">${stock.Code}</td>
-                    <td class="name-cell" title="${stock.Name}">${stock.Name}</td>
+                    <td class="code-cell">${esc(stock.Code)}</td>
+                    <td class="name-cell" title="${esc(stock.Name)}">${esc(stock.Name)}</td>
                     <td class="number-cell metric-cell" data-metric="LastPrice">${price}</td>
                     <td class="number-cell metric-cell ${marketCap.class}" data-metric="MarketCap">${marketCap.text}</td>
                     <td class="number-cell metric-cell ${eps.class}" data-metric="EPS">${eps.text}</td>
@@ -874,12 +875,12 @@
                     <td class="number-cell metric-cell ${q1eps.class}" data-metric="Q1EPSYoY">${q1eps.text}</td>
                     <td class="number-cell metric-cell ${y0eps.class}" data-metric="Y0EPSYoY">${y0eps.text}</td>
                     <td class="number-cell metric-cell ${cagr.class}" data-metric="EPS3YCAGR">${cagr.text}</td>
-                    <td class="name-cell" title="${sectorText}" style="font-size:0.78rem;max-width:120px;color:#888;">${sectorText}</td>
+                    <td class="name-cell" title="${esc(sectorText)}" style="font-size:0.78rem;max-width:120px;color:#888;">${esc(sectorText)}</td>
                 `;
                 tr.addEventListener('click', (e) => {
                     // metric-cell クリックはポップアップ優先で遷移しない
                     if (e.target.closest('.metric-cell')) return;
-                    window.location.href = `stock-detail.html?code=${stock.Code}&from=oneil-screen.html`;
+                    window.location.href = `stock-detail.html?code=${encodeURIComponent(stock.Code)}&from=oneil-screen.html`;
                 });
                 tbody.appendChild(tr);
             });

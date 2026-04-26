@@ -217,6 +217,7 @@
             stocks.forEach(s => map[s.Code] = s);
             const items = list.map(c => map[c] || { Code: c, Name: '(データなし)' });
 
+            const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
             tbody.innerHTML = items.map(s => {
                 const fmt = (v, suffix='', digits=1) => v == null ? '<span class="no-data">-</span>' : v.toFixed(digits) + suffix;
                 const fmtSign = (v, suffix='', digits=1) => {
@@ -226,17 +227,17 @@
                 };
                 return `
                     <tr>
-                        <td class="code-cell"><a class="code-link" href="stock-detail.html?code=${s.Code}&from=watchlist.html">${s.Code}</a></td>
-                        <td>${s.Name || '-'}</td>
-                        <td style="font-size:0.78rem;color:#aaa;">${s.MarketSegment || '-'}</td>
-                        <td style="font-size:0.78rem;color:#aaa;">${s.Sector33 || '-'}</td>
+                        <td class="code-cell"><a class="code-link" href="stock-detail.html?code=${encodeURIComponent(s.Code)}&from=watchlist.html">${esc(s.Code)}</a></td>
+                        <td>${esc(s.Name) || '-'}</td>
+                        <td style="font-size:0.78rem;color:#aaa;">${esc(s.MarketSegment) || '-'}</td>
+                        <td style="font-size:0.78rem;color:#aaa;">${esc(s.Sector33) || '-'}</td>
                         <td class="number-cell">${s.LastPrice ? Math.round(s.LastPrice).toLocaleString() : '<span class="no-data">-</span>'}</td>
                         <td class="number-cell">${fmt(s.PER, '倍')}</td>
                         <td class="number-cell">${fmt(s.PBR, '倍', 2)}</td>
                         <td class="number-cell">${fmtSign(s.ROE, '%')}</td>
                         <td class="number-cell">${s.RS != null ? Math.round(s.RS) : '<span class="no-data">-</span>'}</td>
                         <td class="number-cell">${fmt(s.NetNetRatio, '', 2)}</td>
-                        <td><button class="remove-btn" onclick="removeCode('${s.Code}')" title="削除">✕</button></td>
+                        <td><button class="remove-btn" onclick="removeCode('${encodeURIComponent(s.Code)}')" title="削除">✕</button></td>
                     </tr>
                 `;
             }).join('');
