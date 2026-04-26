@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>高配当株スクリーニング | 株式分析ダッシュボード</title>
-    <meta name="description" content="配当利回りに加え、配当性向・連続非減配年数・自己資本率で「持続性のある高配当株」を発掘。">
+    <title>株主優待スクリーニング | 株式分析ダッシュボード</title>
+    <meta name="description" content="配当 + 優待換算額の実質利回りで優待株を発掘。data/yutai.csv の手動メンテベース。">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -21,7 +21,7 @@
         }
         h1 {
             font-size: 1.8rem;
-            background: linear-gradient(135deg, #ffd700, #ff9966);
+            background: linear-gradient(135deg, #ff6b9d, #c084fc);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             background-clip: text; margin-bottom: 10px;
         }
@@ -33,21 +33,25 @@
             font-size: 0.85rem; transition: all 0.2s;
         }
         .nav a:hover, .nav a.active {
-            background: rgba(255, 215, 0, 0.18); border-color: #ffd700; color: #ffd700;
+            background: rgba(255, 107, 157, 0.18); border-color: #ff6b9d; color: #ff6b9d;
         }
         .info-box {
-            background: rgba(255, 215, 0, 0.06);
-            border: 1px solid rgba(255, 215, 0, 0.22);
+            background: rgba(255, 107, 157, 0.06);
+            border: 1px solid rgba(255, 107, 157, 0.22);
             border-radius: 12px; padding: 18px 22px; margin-bottom: 24px;
             color: #ccc; line-height: 1.7; font-size: 0.9rem;
         }
-        .info-box strong { color: #ffd700; }
+        .info-box strong { color: #ff6b9d; }
         .score-formula {
             display: inline-block; background: rgba(0,0,0,0.25);
             padding: 2px 8px; border-radius: 4px; margin: 0 2px;
             font-family: monospace; font-size: 0.82rem; color: #00d9ff;
         }
-        .warn { color: #ff9966; font-size: 0.82rem; }
+        .csv-warn {
+            background: rgba(255, 215, 0, 0.08); border: 1px solid rgba(255, 215, 0, 0.3);
+            border-radius: 8px; padding: 12px 18px; margin: 12px 0;
+            color: #ffd93d; font-size: 0.85rem;
+        }
 
         .status-bar {
             display: flex; gap: 20px; flex-wrap: wrap;
@@ -56,7 +60,7 @@
         }
         .status-item { display: flex; flex-direction: column; }
         .status-label { font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-        .status-value { font-size: 1.1rem; font-weight: bold; color: #ffd700; margin-top: 4px; }
+        .status-value { font-size: 1.1rem; font-weight: bold; color: #ff6b9d; margin-top: 4px; }
 
         .filter-bar {
             display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -72,7 +76,7 @@
             border-radius: 6px; color: #e0e0e0; font-size: 0.85rem;
         }
         .filter-group input:focus, .filter-group select:focus {
-            outline: none; border-color: #ffd700;
+            outline: none; border-color: #ff6b9d;
         }
 
         .table-wrapper {
@@ -81,37 +85,41 @@
         }
         table { width: 100%; border-collapse: collapse; }
         th {
-            background: rgba(255, 215, 0, 0.1); color: #ffd700;
+            background: rgba(255, 107, 157, 0.1); color: #ff6b9d;
             padding: 10px 12px; text-align: left; font-weight: 600; font-size: 0.82rem;
             cursor: pointer; user-select: none; white-space: nowrap;
         }
-        th:hover { background: rgba(255, 215, 0, 0.2); }
+        th:hover { background: rgba(255, 107, 157, 0.2); }
         th.sort-asc::after { content: ' ▲'; font-size: 0.7rem; }
         th.sort-desc::after { content: ' ▼'; font-size: 0.7rem; }
         td { padding: 8px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 0.84rem; }
-        tr:hover { background: rgba(255, 215, 0, 0.04); }
+        tr:hover { background: rgba(255, 107, 157, 0.04); }
         .code-cell { font-family: monospace; color: #00d9ff; font-weight: 600; }
         .code-link { color: #00d9ff; text-decoration: none; }
         .code-link:hover { text-decoration: underline; }
         .number-cell { text-align: right; font-family: monospace; }
-        .name-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .yield-cell {
+        .name-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .total-yield-cell {
             text-align: right; font-family: monospace; font-weight: 700;
-            color: #ffd700;
+            color: #ff6b9d;
         }
         .score-cell {
             font-family: monospace; font-weight: 700; text-align: right;
-            color: #ffd700;
+            color: #ff6b9d;
         }
-        .payout-good { color: #00ff88; }
-        .payout-warn { color: #ffd93d; }
-        .payout-danger { color: #ff6b6b; }
-        .nocut-badge {
-            display: inline-block; padding: 2px 6px;
-            background: rgba(0, 255, 136, 0.12); color: #00ff88;
-            border-radius: 4px; font-size: 0.75rem; font-weight: 600;
+        .category-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 0.75rem; font-weight: 600;
         }
-        .nocut-badge.zero { background: rgba(255,255,255,0.05); color: #777; }
+        .cat-quo { background: rgba(0,255,136,0.15); color: #00ff88; }
+        .cat-food { background: rgba(255,170,0,0.15); color: #ffaa00; }
+        .cat-product { background: rgba(0,217,255,0.15); color: #00d9ff; }
+        .cat-other { background: rgba(255,255,255,0.05); color: #888; }
+        .hold-badge {
+            display: inline-block; padding: 2px 6px; border-radius: 4px;
+            background: rgba(192,132,252,0.15); color: #c084fc;
+            font-size: 0.72rem; font-weight: 600;
+        }
         .no-data { color: #555; }
         .empty-state { text-align: center; padding: 40px 20px; color: #666; }
 
@@ -121,7 +129,7 @@
             h1 { font-size: 1.3rem !important; }
             .nav a { padding: 5px 9px !important; font-size: 0.72rem !important; }
             .table-wrapper { overflow-x: auto !important; }
-            table { min-width: 900px; font-size: 0.78rem !important; }
+            table { min-width: 1000px; font-size: 0.78rem !important; }
             th, td { padding: 6px 8px !important; }
         }
     </style>
@@ -130,15 +138,15 @@
 <body>
     <div class="container">
         <header>
-            <h1>💴 高配当株スクリーニング</h1>
-            <p class="subtitle">利回り単独でなく「持続性 (配当性向・連続非減配)」を併せて評価</p>
+            <h1>🎁 株主優待スクリーニング</h1>
+            <p class="subtitle">配当 + 優待換算額の「実質利回り」で優待株を発掘</p>
             <nav class="nav">
                 <a href="index.html">📊 基本ダッシュボード</a>
                 <a href="net-net-value.html">💎 ネットネット分析</a>
                 <a href="oneil-screen.html">🚀 オニールスクリーニング</a>
                 <a href="value.html">💰 バリュー</a>
-                <a href="dividend.html" class="active">💴 高配当</a>
-                <a href="yutai.html">🎁 優待</a>
+                <a href="dividend.html">💴 高配当</a>
+                <a href="yutai.html" class="active">🎁 優待</a>
                 <a href="market-top.html">📈 マーケット天井検出</a>
                 <a href="cycle.html">🔄 セクター</a>
                 <a href="query.html">🔍 SQL クエリ</a>
@@ -148,23 +156,26 @@
 
         <div class="info-box">
             <strong>📖 この画面でできること</strong><br>
-            <strong>配当利回り</strong> だけでなく <strong>配当性向 (30-60%が安定的)</strong> や <strong>連続非減配年数</strong> も加味した
-            「減配リスクの低い高配当株」を発掘する。<br>
+            <strong>実質利回り</strong> = (年間配当 + 優待換算額) ÷ 必要投資額 で優待株をランキング。
+            必要投資額・長期保有特典・カテゴリ実用性も加味する。<br>
             <br>
             <strong>スコア配点 (100点):</strong>
-            <span class="score-formula">配当利回り 40</span>
-            <span class="score-formula">配当性向 20</span>
-            <span class="score-formula">連続非減配 20</span>
-            <span class="score-formula">自己資本率 10</span>
-            <span class="score-formula">ROE 10</span><br>
+            <span class="score-formula">実質利回り 50</span>
+            <span class="score-formula">必要投資額 20</span>
+            <span class="score-formula">長期保有特典 15</span>
+            <span class="score-formula">カテゴリ実用性 15</span><br>
             <br>
-            <strong>判断の目安:</strong> 利回り ≥ 3%、配当性向 30-60%、連続非減配 ≥ 3年、自己資本率 ≥ 40% を全て満たすものが「持続性のある高配当株」。<br>
-            <span class="warn">⚠️ 配当性向が 80% を超える銘柄は減配リスク高。100% 超は取り崩し配当の可能性あり。</span>
+            <div class="csv-warn">
+                ⚠️ 優待データは <code style="background:rgba(0,0,0,0.3);padding:1px 5px;border-radius:3px;">data/yutai.csv</code> の手動メンテに依存。
+                公式 API が無いため、IR/優待カタログを見て CSV に追記する必要がある。<br>
+                CSV フォーマット: <code>code, yutai_value_yen, min_shares, hold_months, category, note</code>
+            </div>
+            <strong>判断の目安:</strong> 実質利回り ≥ 4%、必要投資額 ≤ 30万円、長期保有特典あり、現金等価物 (QUO/カタログ) は満点。
         </div>
 
         <div class="status-bar">
             <div class="status-item">
-                <span class="status-label">高配当銘柄数</span>
+                <span class="status-label">優待登録銘柄</span>
                 <span class="status-value" id="stock-count">-</span>
             </div>
             <div class="status-item">
@@ -172,7 +183,7 @@
                 <span class="status-value" id="visible-count">-</span>
             </div>
             <div class="status-item">
-                <span class="status-label">平均利回り</span>
+                <span class="status-label">平均実質利回り</span>
                 <span class="status-value" id="yield-avg">-</span>
             </div>
             <div class="status-item">
@@ -183,20 +194,27 @@
 
         <div class="filter-bar">
             <div class="filter-group">
-                <label>利回り最低 (%)</label>
-                <input type="number" id="filter-yield" value="3.0" step="0.1" min="0">
+                <label>実質利回り最低 (%)</label>
+                <input type="number" id="filter-totalyield" value="0" step="0.5" min="0">
             </div>
             <div class="filter-group">
-                <label>配当性向 上限 (%)</label>
-                <input type="number" id="filter-payout" value="80" step="5" min="0">
+                <label>必要投資額上限 (万円)</label>
+                <input type="number" id="filter-invest" value="50" step="5" min="0">
             </div>
             <div class="filter-group">
-                <label>連続非減配 最低</label>
-                <input type="number" id="filter-nocut" value="0" step="1" min="0">
+                <label>長期保有特典あり</label>
+                <select id="filter-hold">
+                    <option value="">問わず</option>
+                    <option value="any">あり (1ヶ月以上)</option>
+                    <option value="12">1年以上</option>
+                    <option value="36">3年以上</option>
+                </select>
             </div>
             <div class="filter-group">
-                <label>自己資本率最低 (%)</label>
-                <input type="number" id="filter-equity" value="0" step="5" min="0">
+                <label>カテゴリ</label>
+                <select id="filter-category">
+                    <option value="">全カテゴリ</option>
+                </select>
             </div>
             <div class="filter-group">
                 <label>市場区分</label>
@@ -208,17 +226,10 @@
                 </select>
             </div>
             <div class="filter-group">
-                <label>業種(33)</label>
-                <select id="filter-sector">
-                    <option value="">全業種</option>
-                </select>
-            </div>
-            <div class="filter-group">
                 <label>表示件数</label>
                 <select id="filter-limit">
                     <option value="50">50</option>
                     <option value="100" selected>100</option>
-                    <option value="200">200</option>
                     <option value="500">500</option>
                 </select>
             </div>
@@ -233,19 +244,18 @@
                         <th data-sort="Name">銘柄名</th>
                         <th data-sort="Sector33">業種</th>
                         <th data-sort="Score" class="number-cell">Score</th>
-                        <th data-sort="DividendYield" class="number-cell">利回り%</th>
-                        <th data-sort="DividendPerShare" class="number-cell">DPS円</th>
-                        <th data-sort="PayoutRatio" class="number-cell">配当性向%</th>
-                        <th data-sort="NoCutYears" class="number-cell">非減配年</th>
-                        <th data-sort="ROE" class="number-cell">ROE%</th>
-                        <th data-sort="EquityRatio" class="number-cell">自己資本%</th>
-                        <th data-sort="PER" class="number-cell">PER</th>
+                        <th data-sort="TotalYield" class="number-cell">実質利回り</th>
+                        <th data-sort="DividendYield" class="number-cell">配当%</th>
+                        <th data-sort="YutaiYield" class="number-cell">優待%</th>
+                        <th data-sort="YutaiValueYen" class="number-cell">優待額</th>
+                        <th data-sort="Category">カテゴリ</th>
+                        <th data-sort="MinInvestment" class="number-cell">必要投資額</th>
+                        <th data-sort="HoldMonths" class="number-cell">長期</th>
                         <th data-sort="LastPrice" class="number-cell">株価</th>
-                        <th data-sort="MarketCap" class="number-cell">時価総額</th>
                     </tr>
                 </thead>
                 <tbody id="tbody">
-                    <tr><td colspan="14" class="empty-state">読み込み中...</td></tr>
+                    <tr><td colspan="13" class="empty-state">読み込み中...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -258,55 +268,63 @@
         let sortKey = 'Score';
         let sortDir = 'desc';
 
+        function categoryClass(c) {
+            if (!c) return 'cat-other';
+            if (c.match(/QUO|クオ|ギフト|カタログ/)) return 'cat-quo';
+            if (c.match(/食品|外食/)) return 'cat-food';
+            if (c.match(/自社製品/)) return 'cat-product';
+            return 'cat-other';
+        }
+
         async function loadData() {
             try {
-                const res = await fetch('/api/dividend-ranking');
+                const res = await fetch('/api/yutai-ranking');
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 allStocks = await res.json();
                 if (!Array.isArray(allStocks) || allStocks.length === 0) {
                     document.getElementById('tbody').innerHTML =
-                        '<tr><td colspan="14" class="empty-state">高配当データなし。<br>' +
-                        'XBRL バルクロード (CFO/粗利/配当タグ追加版) を実行してください。</td></tr>';
+                        '<tr><td colspan="13" class="empty-state">優待データなし。<br>' +
+                        '<code style="background:rgba(255,215,0,0.1);padding:2px 6px;border-radius:3px;color:#ffd93d;">data/yutai.csv</code> を編集して銘柄を追加してください。</td></tr>';
+                    document.getElementById('stock-count').textContent = '0';
                     return;
                 }
                 document.getElementById('stock-count').textContent = allStocks.length;
                 document.getElementById('base-date').textContent = new Date().toISOString().slice(0, 10);
-                populateSectorFilter();
+                populateCategoryFilter();
                 render();
             } catch (err) {
                 document.getElementById('tbody').innerHTML =
-                    `<tr><td colspan="14" class="empty-state" style="color:#ff6b6b;">エラー: ${esc(err.message)}<br>ローカルサーバーを起動してください。</td></tr>`;
+                    `<tr><td colspan="13" class="empty-state" style="color:#ff6b6b;">エラー: ${esc(err.message)}<br>ローカルサーバーを起動してください。</td></tr>`;
             }
         }
 
-        function populateSectorFilter() {
-            const sectors = [...new Set(allStocks.map(s => s.Sector33).filter(Boolean))].sort();
-            const sel = document.getElementById('filter-sector');
-            sectors.forEach(s => {
+        function populateCategoryFilter() {
+            const cats = [...new Set(allStocks.map(s => s.Category).filter(Boolean))].sort();
+            const sel = document.getElementById('filter-category');
+            cats.forEach(c => {
                 const opt = document.createElement('option');
-                opt.value = s; opt.textContent = s;
+                opt.value = c; opt.textContent = c;
                 sel.appendChild(opt);
             });
         }
 
         function applyFilters(stocks) {
-            const yieldMin = parseFloat(document.getElementById('filter-yield').value) || 0;
-            const payoutMax = parseFloat(document.getElementById('filter-payout').value);
-            const nocutMin = parseInt(document.getElementById('filter-nocut').value, 10) || 0;
-            const equityMin = parseFloat(document.getElementById('filter-equity').value) || 0;
+            const yMin = parseFloat(document.getElementById('filter-totalyield').value) || 0;
+            const investMax = parseFloat(document.getElementById('filter-invest').value);
+            const holdF = document.getElementById('filter-hold').value;
+            const cat = document.getElementById('filter-category').value;
             const seg = document.getElementById('filter-segment').value;
-            const sector = document.getElementById('filter-sector').value;
 
             return stocks.filter(s => {
-                if (yieldMin > 0 && (s.DividendYield == null || s.DividendYield < yieldMin)) return false;
-                if (!isNaN(payoutMax) && payoutMax > 0) {
-                    // PayoutRatioがnullの場合は通す (情報不足だが利回りは満たしている)
-                    if (s.PayoutRatio != null && s.PayoutRatio > payoutMax) return false;
+                if (yMin > 0 && (s.TotalYield == null || s.TotalYield < yMin)) return false;
+                if (!isNaN(investMax) && investMax > 0) {
+                    if (s.MinInvestment > investMax * 10000) return false;
                 }
-                if (s.NoCutYears < nocutMin) return false;
-                if (equityMin > 0 && (s.EquityRatio == null || s.EquityRatio < equityMin)) return false;
+                if (holdF === 'any' && !(s.HoldMonths > 0)) return false;
+                if (holdF === '12' && s.HoldMonths < 12) return false;
+                if (holdF === '36' && s.HoldMonths < 36) return false;
+                if (cat && s.Category !== cat) return false;
                 if (seg && s.MarketSegment !== seg) return false;
-                if (sector && s.Sector33 !== sector) return false;
                 return true;
             });
         }
@@ -323,14 +341,6 @@
             });
         }
 
-        function payoutClass(p) {
-            if (p == null) return '';
-            if (p >= 30 && p <= 60) return 'payout-good';
-            if (p > 60 && p <= 80) return 'payout-warn';
-            if (p > 80) return 'payout-danger';
-            return '';
-        }
-
         function render() {
             const limit = parseInt(document.getElementById('filter-limit').value, 10);
             const filtered = applyFilters(allStocks);
@@ -338,7 +348,7 @@
             const visible = sorted.slice(0, limit);
 
             document.getElementById('visible-count').textContent = visible.length + ' / ' + filtered.length;
-            const yields = filtered.map(s => s.DividendYield).filter(v => v != null);
+            const yields = filtered.map(s => s.TotalYield).filter(v => v != null);
             document.getElementById('yield-avg').textContent =
                 yields.length ? (yields.reduce((s, v) => s + v, 0) / yields.length).toFixed(2) + '%' : '-';
 
@@ -348,7 +358,7 @@
 
             const tbody = document.getElementById('tbody');
             if (visible.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="14" class="empty-state">条件に合致する銘柄なし</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" class="empty-state">条件に合致する銘柄なし</td></tr>';
                 return;
             }
 
@@ -356,26 +366,24 @@
                 v == null ? '<span class="no-data">-</span>' : v.toFixed(digits) + suffix;
 
             tbody.innerHTML = visible.map((s, i) => {
-                const mcap = s.MarketCap ? (s.MarketCap / 1e8).toFixed(0) + '億' : '-';
-                const nocutCls = s.NoCutYears > 0 ? '' : 'zero';
-                const nocutLabel = s.NoCutYears > 0 ? `${s.NoCutYears}年` : '0';
-                const payoutCls = payoutClass(s.PayoutRatio);
+                const investMan = s.MinInvestment ? (s.MinInvestment / 10000).toFixed(1) + '万' : '-';
+                const holdLabel = s.HoldMonths > 0 ? `${s.HoldMonths}ヶ月` : '-';
+                const catCls = categoryClass(s.Category);
                 return `
-                    <tr>
+                    <tr title="${esc(s.Note || '')}">
                         <td class="number-cell" style="color:#666;">${i + 1}</td>
-                        <td class="code-cell"><a class="code-link" href="stock-detail.html?code=${encodeURIComponent(s.Code)}&from=dividend.html">${esc(s.Code)}</a></td>
+                        <td class="code-cell"><a class="code-link" href="stock-detail.html?code=${encodeURIComponent(s.Code)}&from=yutai.html">${esc(s.Code)}</a></td>
                         <td class="name-cell" title="${esc(s.Name)}">${esc(s.Name) || '-'}</td>
                         <td style="font-size:0.78rem;color:#aaa;">${esc(s.Sector33) || '-'}</td>
                         <td class="score-cell">${s.Score.toFixed(1)}</td>
-                        <td class="yield-cell">${fmt(s.DividendYield, 2, '%')}</td>
-                        <td class="number-cell">${s.DividendPerShare > 0 ? s.DividendPerShare.toFixed(2) : '-'}</td>
-                        <td class="number-cell ${payoutCls}">${fmt(s.PayoutRatio, 1, '%')}</td>
-                        <td class="number-cell"><span class="nocut-badge ${nocutCls}">${nocutLabel}</span></td>
-                        <td class="number-cell">${fmt(s.ROE, 1, '%')}</td>
-                        <td class="number-cell">${fmt(s.EquityRatio, 0, '%')}</td>
-                        <td class="number-cell">${fmt(s.PER, 1, '倍')}</td>
+                        <td class="total-yield-cell">${fmt(s.TotalYield, 2, '%')}</td>
+                        <td class="number-cell">${fmt(s.DividendYield, 2, '%')}</td>
+                        <td class="number-cell">${fmt(s.YutaiYield, 2, '%')}</td>
+                        <td class="number-cell">${s.YutaiValueYen ? s.YutaiValueYen.toLocaleString() + '円' : '-'}</td>
+                        <td><span class="category-badge ${catCls}">${esc(s.Category) || '-'}</span></td>
+                        <td class="number-cell">${investMan}</td>
+                        <td class="number-cell">${s.HoldMonths > 0 ? `<span class="hold-badge">${holdLabel}</span>` : '-'}</td>
                         <td class="number-cell">${s.LastPrice ? Math.round(s.LastPrice).toLocaleString() : '-'}</td>
-                        <td class="number-cell">${mcap}</td>
                     </tr>
                 `;
             }).join('');
@@ -389,13 +397,13 @@
                     sortDir = sortDir === 'asc' ? 'desc' : 'asc';
                 } else {
                     sortKey = key;
-                    sortDir = (key === 'Code' || key === 'Name' || key === 'Sector33') ? 'asc' : 'desc';
+                    sortDir = (key === 'Code' || key === 'Name' || key === 'Sector33' || key === 'Category') ? 'asc' : 'desc';
                 }
                 render();
             });
         });
 
-        ['filter-yield', 'filter-payout', 'filter-nocut', 'filter-equity', 'filter-segment', 'filter-sector', 'filter-limit'].forEach(id => {
+        ['filter-totalyield', 'filter-invest', 'filter-hold', 'filter-category', 'filter-segment', 'filter-limit'].forEach(id => {
             document.getElementById(id).addEventListener('input', render);
             document.getElementById(id).addEventListener('change', render);
         });

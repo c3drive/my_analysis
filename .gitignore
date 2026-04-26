@@ -30,5 +30,6 @@ Thumbs.db
 !data/
 data/*
 !data/stock_data.db
+!data/yutai.csv
 *.db-shm
 *.db-wal
