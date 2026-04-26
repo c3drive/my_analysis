@@ -195,6 +195,39 @@ jobs:
           echo "${NEW_STOCKS:-none}" >> $GITHUB_OUTPUT
           echo "$EOF" >> $GITHUB_OUTPUT
 
+      - name: Detect daily alerts
+        id: alerts
+        continue-on-error: true
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          ALERT_OUTPUT=$(go run . -mode=detect-alerts -date=$TODAY 2>&1)
+          echo "$ALERT_OUTPUT"
+          # 「本日のアラートはありません」が含まれていれば has_alerts=false
+          if echo "$ALERT_OUTPUT" | grep -q "本日のアラートはありません"; then
+            echo "has_alerts=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_alerts=true" >> $GITHUB_OUTPUT
+            # Issue body 用に複数行を保存
+            EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+            echo "body<<$EOF" >> $GITHUB_OUTPUT
+            echo "$ALERT_OUTPUT" >> $GITHUB_OUTPUT
+            echo "$EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create alert Issue
+        if: steps.alerts.outputs.has_alerts == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const today = new Date().toISOString().split('T')[0];
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `📢 アラート ${today} (RS急上昇/業績修正/出来高急増)`,
+              body: `${{ steps.alerts.outputs.body }}`,
+              labels: ['alert', 'daily']
+            });
+
       - name: Compress databases
         run: |
           for DB_NAME in xbrl.db stock_price.db rs.db; do
