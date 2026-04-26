@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 // --- 閲覧ロジック ---
@@ -59,6 +60,14 @@ func startServer() {
 	})
 
 	http.HandleFunc("/api/stocks", func(w http.ResponseWriter, r *http.Request) {
+		// キャッシュチェック (60秒TTL)
+		if cached, ok := cacheGet("api:stocks"); ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "HIT")
+			w.Write(cached)
+			return
+		}
+
 		db, err := openServerDB()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -181,8 +190,11 @@ func startServer() {
 			stocks = append(stocks, s)
 		}
 
+		body, _ := json.Marshal(stocks)
+		cacheSet("api:stocks", body, 60*time.Second)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(stocks)
+		w.Header().Set("X-Cache", "MISS")
+		w.Write(body)
 	})
 
 	// 個別銘柄の株価履歴API
@@ -375,6 +387,14 @@ func startServer() {
 	// オニール成長株スクリーニングAPI
 	http.HandleFunc("/api/oneil-ranking", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		// キャッシュチェック (60秒TTL)
+		if cached, ok := cacheGet("api:oneil-ranking"); ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "HIT")
+			w.Write(cached)
+			return
+		}
 
 		db, err := openServerDB()
 		if err != nil {
@@ -585,8 +605,11 @@ func startServer() {
 			}
 		}
 
+		body, _ := json.Marshal(stocks)
+		cacheSet("api:oneil-ranking", body, 60*time.Second)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(stocks)
+		w.Header().Set("X-Cache", "MISS")
+		w.Write(body)
 	})
 
 	// 個別銘柄の財務時系列API（四半期・通期）
