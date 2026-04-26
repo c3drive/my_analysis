@@ -164,10 +164,16 @@
         <div class="panel">
             <div class="panel-title">📂 DB の読み込み</div>
             <div class="file-row">
-                <label class="file-input-label" for="db-file">📁 ローカルファイルを選択 (.db / .db.gz)</label>
+                <label class="file-input-label" for="db-file">📁 メインDB (xbrl.db / .gz)</label>
                 <input type="file" id="db-file" accept=".db,.gz,.sqlite">
                 <span class="or">または</span>
-                <button class="btn btn-primary" id="load-release">📥 同一オリジンから自動取得 (data/xbrl.db.gz)</button>
+                <button class="btn btn-primary" id="load-all">📥 同一オリジンから3DB一括取得</button>
+            </div>
+            <div class="file-row" style="margin-top:8px;">
+                <label class="file-input-label" for="price-file" style="background:rgba(0,255,136,0.08);border-color:rgba(0,255,136,0.3);color:#00ff88;">➕ stock_price.db (任意)</label>
+                <input type="file" id="price-file" accept=".db,.gz">
+                <label class="file-input-label" for="rs-file" style="background:rgba(255,170,0,0.08);border-color:rgba(255,170,0,0.3);color:#ffaa00;">➕ rs.db (任意)</label>
+                <input type="file" id="rs-file" accept=".db,.gz">
             </div>
             <div id="db-status" class="status info">DBが未読込です。ファイルを選択してください。</div>
         </div>
@@ -202,6 +208,13 @@
             { label: '高ROE銘柄', sql: "SELECT code, name, ROUND(net_income * 100.0 / net_assets, 1) AS roe FROM stocks WHERE net_assets > 0 AND net_income > 0 ORDER BY roe DESC LIMIT 30;" },
             { label: 'TDNET開示一覧', sql: "SELECT code, disclosure_datetime, title FROM tdnet_disclosures ORDER BY disclosure_datetime DESC LIMIT 30;" },
             { label: '時系列財務(7203)', sql: "SELECT submission_date, doc_type, net_sales, net_income FROM stock_financials WHERE code = '7203' ORDER BY submission_date DESC LIMIT 20;" },
+            { label: '🔗株価最新(price)', sql: "SELECT code, date, close FROM price_db.stock_prices sp1 WHERE date = (SELECT MAX(date) FROM price_db.stock_prices sp2 WHERE sp2.code = sp1.code) ORDER BY close DESC LIMIT 20;" },
+            { label: '🔗RS top20(rs)', sql: "SELECT code, rs_rank, rs_score FROM rs_db.rs_scores rs1 WHERE date = (SELECT MAX(date) FROM rs_db.rs_scores rs2 WHERE rs2.code = rs1.code) ORDER BY rs_rank DESC LIMIT 20;" },
+            { label: '🔗時価総額×RS', sql: `SELECT s.code, s.name, ROUND(p.close * s.shares_issued / 1e8, 0) AS '時価総額(億)', r.rs_rank
+FROM stocks s
+JOIN (SELECT code, close FROM price_db.stock_prices sp1 WHERE date = (SELECT MAX(date) FROM price_db.stock_prices sp2 WHERE sp2.code = sp1.code)) p ON s.code = p.code
+JOIN (SELECT code, rs_rank FROM rs_db.rs_scores rs1 WHERE date = (SELECT MAX(date) FROM rs_db.rs_scores rs2 WHERE rs2.code = rs1.code)) r ON s.code = r.code
+WHERE r.rs_rank >= 90 ORDER BY r.rs_rank DESC LIMIT 30;` },
         ];
 
         // sql.js 初期化
@@ -224,27 +237,109 @@
             presetContainer.appendChild(btn);
         });
 
-        // ファイル選択
+        // メインDBファイル選択
         document.getElementById('db-file').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
             await loadDBFromBuffer(await file.arrayBuffer(), file.name);
         });
 
-        // 同一オリジンから DB を取得 (CORS回避: GitHubのreleases/downloadは外部originから弾かれるため)
-        // localhost: Go server の /data/xbrl.db.gz ハンドラ経由
-        // GitHub Pages: deploy-pages.yml が public/data/xbrl.db.gz にコピー
-        document.getElementById('load-release').addEventListener('click', async () => {
+        // 追加DB (price_db / rs_db) のファイル選択
+        document.getElementById('price-file').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            await attachDBFromBuffer(await file.arrayBuffer(), file.name, 'price_db');
+        });
+        document.getElementById('rs-file').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            await attachDBFromBuffer(await file.arrayBuffer(), file.name, 'rs_db');
+        });
+
+        // 同一オリジンから 3DB 一括取得 (CORS回避: GitHubのreleases/downloadは外部originから弾かれるため)
+        document.getElementById('load-all').addEventListener('click', async () => {
             try {
                 setStatus('info', '📥 data/xbrl.db.gz を取得中...');
-                const dlRes = await fetch('data/xbrl.db.gz');
-                if (!dlRes.ok) throw new Error('取得失敗: HTTP ' + dlRes.status);
-                const buf = await dlRes.arrayBuffer();
-                await loadDBFromBuffer(buf, 'xbrl.db.gz');
+                const xbrl = await fetchAndUngzip('data/xbrl.db.gz');
+                if (!SQL) { setStatus('error', 'sql.js 未初期化'); return; }
+                if (db) db.close();
+                db = new SQL.Database(xbrl);
+                let msg = `✅ xbrl.db 読込完了 (${(xbrl.length/1024/1024).toFixed(1)}MB)`;
+                document.getElementById('run-sql').disabled = false;
+
+                // price_db, rs_db を順次 ATTACH (失敗してもメインは使える)
+                try {
+                    setStatus('info', msg + '<br>📥 stock_price.db を ATTACH 中...');
+                    const price = await fetchAndUngzip('data/stock_price.db.gz');
+                    SQL.FS.writeFile('/tmp_price.db', price);
+                    db.exec("ATTACH '/tmp_price.db' AS price_db");
+                    msg += `<br>✅ price_db ATTACH 完了 (${(price.length/1024/1024).toFixed(1)}MB)`;
+                } catch (e) {
+                    msg += `<br>⚠️ stock_price.db.gz 取得失敗: ${e.message}`;
+                }
+                try {
+                    setStatus('info', msg + '<br>📥 rs.db を ATTACH 中...');
+                    const rs = await fetchAndUngzip('data/rs.db.gz');
+                    SQL.FS.writeFile('/tmp_rs.db', rs);
+                    db.exec("ATTACH '/tmp_rs.db' AS rs_db");
+                    msg += `<br>✅ rs_db ATTACH 完了 (${(rs.length/1024/1024).toFixed(1)}MB)`;
+                } catch (e) {
+                    msg += `<br>⚠️ rs.db.gz 取得失敗: ${e.message}`;
+                }
+
+                // テーブル一覧を更新
+                const tables = listAllTables();
+                msg += `<br>📋 テーブル: ${tables.join(', ')}`;
+                setStatus('success', msg);
             } catch (err) {
-                setStatus('error', '❌ ' + err.message + '<br>(localhost なら task serve 起動済みか、Pages ならデプロイ完了か確認)');
+                setStatus('error', '❌ ' + err.message);
             }
         });
+
+        async function fetchAndUngzip(url) {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            let bytes = new Uint8Array(await res.arrayBuffer());
+            if (url.endsWith('.gz')) bytes = pako.ungzip(bytes);
+            return bytes;
+        }
+
+        function listAllTables() {
+            const result = [];
+            // メインDB
+            const main = db.exec("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+            if (main.length > 0) result.push(...main[0].values.map(v => v[0]));
+            // ATTACH済みDB
+            const dbs = db.exec("PRAGMA database_list");
+            if (dbs.length > 0) {
+                dbs[0].values.forEach(([_, name]) => {
+                    if (name === 'main' || name === 'temp') return;
+                    try {
+                        const t = db.exec(`SELECT name FROM ${name}.sqlite_master WHERE type='table'`);
+                        if (t.length > 0) {
+                            t[0].values.forEach(v => result.push(`${name}.${v[0]}`));
+                        }
+                    } catch (e) { /* ignore */ }
+                });
+            }
+            return result;
+        }
+
+        async function attachDBFromBuffer(buf, name, asName) {
+            try {
+                if (!db) { setStatus('error', '先にメインDBを読み込んでください'); return; }
+                let bytes = new Uint8Array(buf);
+                if (name.endsWith('.gz')) bytes = pako.ungzip(bytes);
+                const path = `/tmp_${asName}.db`;
+                SQL.FS.writeFile(path, bytes);
+                try { db.exec(`DETACH ${asName}`); } catch (e) { /* not attached yet */ }
+                db.exec(`ATTACH '${path}' AS ${asName}`);
+                const tables = listAllTables();
+                setStatus('success', `✅ ${name} を ${asName} として ATTACH (${(bytes.length/1024/1024).toFixed(1)}MB)<br>📋 テーブル: ${tables.join(', ')}`);
+            } catch (err) {
+                setStatus('error', '❌ ATTACH 失敗: ' + err.message);
+            }
+        }
 
         async function loadDBFromBuffer(buf, name) {
             try {
@@ -263,10 +358,9 @@
                 if (db) db.close();
                 db = new SQL.Database(bytes);
 
-                // テーブル一覧取得
-                const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
-                const tableList = tables.length > 0 ? tables[0].values.map(v => v[0]).join(', ') : '(なし)';
-                setStatus('success', `✅ ${name} 読込完了 (${(bytes.length/1024/1024).toFixed(1)}MB)<br>テーブル: ${tableList}`);
+                // テーブル一覧取得 (ATTACH済みも含む)
+                const tableList = listAllTables().join(', ') || '(なし)';
+                setStatus('success', `✅ ${name} 読込完了 (${(bytes.length/1024/1024).toFixed(1)}MB)<br>📋 テーブル: ${tableList}`);
 
                 document.getElementById('run-sql').disabled = false;
             } catch (err) {
