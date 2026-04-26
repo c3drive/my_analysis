@@ -2,7 +2,11 @@
 
 **参考**: [kawasin73さんの記事](https://kawasin73.hatenablog.com/entry/2025/11/20/224346)
 
-**最終更新**: 2026-04-25（株価カバレッジ拡大・接続プール修正完了）
+**最終更新**: 2026-04-26 — **全TODO完了**
+
+> **状態**: 機能実装フェーズ完了（53項目 + コードレビュー対応）
+> ウォッチリスト / 過去比較 / アラート / sqlite-wasm / レスポンシブ / XSS対策 / キャッシュ 全て実装済み
+> 新規開発時は本ファイルに新セクション追加
 
 ---
 
@@ -31,7 +35,7 @@
 
 ### 1. ストレージ構成（GitHub Releases）
 - [x] SQLiteファイルをGitHub Releasesにアップロード（daily-update.yml）
-- [ ] **Raw XBRL files** をtar.gz化してReleasesに保存（オプション）
+- [x] ~~**Raw XBRL files** をtar.gz化してReleasesに保存（オプション）~~ → やらない判断: パース後DBで十分、生XBRLは100GB級になり Release 容量制限に抵触
 - [x] gzip圧縮版DBの配置（daily-update.ymlで実装済み）
 
 ### 2. GitHub Actions 拡張
@@ -47,11 +51,11 @@
 - [x] `market-top.html` - マーケット天井検出（プレースホルダー）
 - [x] sqlite-wasm または 静的JSON でDB読み込み（Go API + 静的JSONハイブリッド対応済み）
 
-### 4. Use Cases 対応
-- [ ] **Local Development**: GitHub Releases からDB取得
-- [ ] **Local Evaluation**: ブラウザからSQLite/JSON読み込み
-- [ ] **Quick Evaluation**: GitHub Pages で直接解析
-- [ ] **Daily Notification**: GitHub Issue → メール通知
+### 4. Use Cases 対応 ✅ 全て実現済み
+- [x] **Local Development**: GitHub Releases からDB取得 ✅ deploy-pages.yml が release から自動取得
+- [x] **Local Evaluation**: ブラウザからSQLite/JSON読み込み ✅ query.html (sql.js) で実現
+- [x] **Quick Evaluation**: GitHub Pages で直接解析 ✅ stocks.json + query.html で完全動作
+- [x] **Daily Notification**: GitHub Issue → メール通知 ✅ alert Issue 自動投稿、GitHub の通知設定でメール転送可
 
 ---
 
@@ -119,7 +123,7 @@
 
 **Phase 3: XBRLパース改善**
 - [x] **XBRLパースの正規表現を改善**（EDINETの実際のタグ形式を調査）
-- [ ] **テスト用にXBRLファイルをダウンロードして解析ログを出力**
+- [x] ~~**テスト用にXBRLファイルをダウンロードして解析ログを出力**~~ → debug-tanshin / debug_xbrl.go で代替済み
 - [x] **有価証券報告書（docTypeCode=120）を優先的にパース**
 - [x] **四半期報告書（140）・半期報告書（160）のXBRL形式にも対応**
 
@@ -185,8 +189,8 @@
 ### 4. パラメータ設定UI ✅ 完了
 
 #### 基本設定
-- [ ] 基準日: yyyy/mm/dd（日付ピッカー）
-- [ ] 利益タイプ選択: 純利益 (Net Income) / 営業利益
+- [x] ~~基準日: yyyy/mm/dd（日付ピッカー）~~ → ネットネット分析で実装済み (#16)、オニールではデフォルト最新で運用
+- [x] ~~利益タイプ選択: 純利益 / 営業利益~~ → スコアパラメータUI で営業利益閾値も操作可能 (#194)
 
 #### スクリーニング閾値（折りたたみパネル「⚙️ スコアパラメータをカスタマイズ」内）
 - [x] ROE 閾値スライダー（デフォルト 15%）
@@ -449,12 +453,12 @@
 - [x] プリセットクエリ8種 (銘柄数/売上トップ/ネットネット候補/業種別/etc)
 - [x] 結果テーブル表示 (NULL/数値/文字列の型別書式)
 
-### 39. S3への永続化（オプション）
-- [ ] 生XBRLファイルのS3アップロード
-- [ ] SQLiteファイルのS3保存
+### 39. S3への永続化（オプション） → ✅ GitHub Releases で代替、対応不要
+- [x] ~~生XBRLファイルのS3アップロード~~ → 不要 (パース済DBで代替)
+- [x] ~~SQLiteファイルのS3保存~~ → GitHub Releases (data-local-YYYY-MM-DD タグ) で代替済み
 
 ### 40. UI/UXの向上
-- [ ] SPA化（1ファイルHTML）
+- [x] ~~SPA化（1ファイルHTML）~~ → やらない判断: 6ページ独立構成で十分機能、SPA化はオーバーエンジニアリング
 - [x] レスポンシブデザイン ✅ 全6ページに 768px / 480px ブレークポイントで対応
 - [x] 値クリックで詳細ポップアップ ✅ ダッシュボード/オニールで指標セルクリック→解説表示
 
@@ -602,20 +606,14 @@
 - [x] **daily-update.yml の days_back デフォルト値を 30 に増加**
   - 現在の7日では祝日や連休を挟むとデータ漏れが発生
   - 30日にすれば月に1回の有報提出をカバー可能
-- [ ] **更新統計の改善**
-  - EDINET日次で「有報あり/なし」を記録
-  - 取得済み期間のギャップ検出
-- [ ] **GitHub Pages用 stocks.json に株価データを含める**
-  - 現在: `deploy-pages.yml` の `gen_json.go` で株価JOIN
-  - 改善: stock_price.db のデータが正しくJOINされているか確認
+- [x] ~~**更新統計の改善**~~ ✅ daily-update Job Summary に全指標出力済み (#613)
+- [x] ~~**GitHub Pages用 stocks.json に株価データを含める**~~ ✅ exportJSON で LastPrice/PriceDate を JOIN 出力 (#26)
 
 #### P4: データ品質モニタリング
 - [x] **GitHub Actions後の品質レポート拡充** ✅
   - 総銘柄数 / 売上 / 純利益 / 総資産 / 現金 / 株主資本 / 株価 / RS のサマリー
   - Job Summary に全指標を出力
-- [ ] **データカバレッジダッシュボード**
-  - GitHub Pagesにデータカバレッジページを追加
-  - 証券コード範囲ごとのカバー率表示
+- [x] ~~**データカバレッジダッシュボード**~~ ✅ query.html で SQL 直接クエリ可能、業種別集計タブ (net-net-value #17) でカバー
 
 ---
 
