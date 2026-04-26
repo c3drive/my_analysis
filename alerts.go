@@ -179,52 +179,88 @@ type volAlert struct {
 }
 
 func detectVolumeSurge(db *sql.DB, targetDate string, minMultiple float64) []volAlert {
-	// 当日の全銘柄: 当日出来高 + 直近5日平均出来高 + 終値変化率
-	rows, err := db.Query(`
-		WITH today AS (
-			SELECT code, close, volume FROM price_db.stock_prices WHERE date = ?
-		),
-		yesterday AS (
-			SELECT code, close FROM price_db.stock_prices sp1
-			WHERE date = (SELECT MAX(date) FROM price_db.stock_prices sp2 WHERE sp2.code = sp1.code AND sp2.date < ?)
-		),
-		recent AS (
-			SELECT code, AVG(volume) AS avg_vol, COUNT(*) AS cnt
-			FROM (
-				SELECT code, volume FROM price_db.stock_prices
-				WHERE date >= date(?, '-7 days') AND date < ?
-			) GROUP BY code
-		)
-		SELECT t.code, t.close, t.volume, r.avg_vol, y.close
-		FROM today t
-		JOIN recent r ON t.code = r.code
-		JOIN yesterday y ON t.code = y.code
-		WHERE r.cnt >= 3 AND r.avg_vol > 0
-		  AND t.volume > r.avg_vol * ? AND t.close > y.close`,
-		targetDate, targetDate, targetDate, targetDate, minMultiple)
+	// 日付計算は Go 側で (SQLite date() に依存しない)
+	td, err := time.Parse("2006-01-02", targetDate)
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
+	pastStart := td.AddDate(0, 0, -7).Format("2006-01-02")
+
+	// 当日の株価
+	type tp struct{ close, volume float64 }
+	today := make(map[string]tp)
+	rows, err := db.Query(`SELECT code, close, volume FROM price_db.stock_prices WHERE date = ?`, targetDate)
+	if err != nil {
+		log.Printf("⚠️ volume today query: %v", err)
+		return nil
+	}
+	for rows.Next() {
+		var c string
+		var cl, v float64
+		if rows.Scan(&c, &cl, &v) == nil {
+			today[c] = tp{close: cl, volume: v}
+		}
+	}
+	rows.Close()
+	if len(today) == 0 {
+		return nil
+	}
+
+	// 直近5営業日 (target直前) の平均出来高 + 直前日の終値
+	type stat struct {
+		avgVol  float64
+		cnt     int
+		yClose  float64
+		yMaxDay string
+	}
+	stats := make(map[string]*stat)
+	rows, err = db.Query(`
+		SELECT code, date, close, volume
+		FROM price_db.stock_prices
+		WHERE date >= ? AND date < ?`, pastStart, targetDate)
+	if err != nil {
+		log.Printf("⚠️ volume past query: %v", err)
+		return nil
+	}
+	for rows.Next() {
+		var c, d string
+		var cl, v float64
+		if rows.Scan(&c, &d, &cl, &v) != nil {
+			continue
+		}
+		s, ok := stats[c]
+		if !ok {
+			s = &stat{}
+			stats[c] = s
+		}
+		s.avgVol += v
+		s.cnt++
+		if d > s.yMaxDay {
+			s.yMaxDay = d
+			s.yClose = cl
+		}
+	}
+	rows.Close()
 
 	nameMap := loadStockNames(db)
 
 	var alerts []volAlert
-	for rows.Next() {
-		var code string
-		var todayClose, todayVol, avgVol, yClose float64
-		if err := rows.Scan(&code, &todayClose, &todayVol, &avgVol, &yClose); err != nil {
+	for code, t := range today {
+		s, ok := stats[code]
+		if !ok || s.cnt < 3 || s.avgVol <= 0 || s.yClose <= 0 {
 			continue
 		}
-		if yClose <= 0 {
+		avg := s.avgVol / float64(s.cnt)
+		mult := t.volume / avg
+		if mult < minMultiple || t.close <= s.yClose {
 			continue
 		}
 		n := nameMap[code]
 		alerts = append(alerts, volAlert{
 			Code: code, Name: n.name, Sector: n.sector,
-			VolumeMultiple: todayVol / avgVol,
-			Close:          todayClose,
-			PriceChange:    (todayClose - yClose) / yClose * 100,
+			VolumeMultiple: mult,
+			Close:          t.close,
+			PriceChange:    (t.close - s.yClose) / s.yClose * 100,
 		})
 	}
 	sort.Slice(alerts, func(i, j int) bool { return alerts[i].VolumeMultiple > alerts[j].VolumeMultiple })
