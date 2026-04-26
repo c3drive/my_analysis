@@ -372,6 +372,26 @@
             margin-bottom: 15px;
         }
     
+        /* 指標解説ポップアップ */
+        .metric-cell { cursor: help; transition: background 0.15s; }
+        .metric-cell:hover { background: rgba(255, 107, 107, 0.08) !important; }
+        .metric-popup {
+            position: fixed; z-index: 10000;
+            background: rgba(15, 20, 35, 0.98); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 107, 107, 0.4);
+            border-radius: 12px; padding: 14px 18px;
+            min-width: 260px; max-width: 360px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+            color: #e0e0e0; font-size: 0.85rem; line-height: 1.6;
+        }
+        .metric-popup .mp-title { font-size: 1rem; font-weight: 700; color: #ff6b6b; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .metric-popup .mp-close { cursor: pointer; color: #888; padding: 0 6px; font-size: 1.2rem; line-height: 1; }
+        .metric-popup .mp-close:hover { color: #fff; }
+        .metric-popup .mp-value { font-size: 1.4rem; font-weight: 700; color: #00ff88; margin: 6px 0; }
+        .metric-popup .mp-formula { color: #888; font-size: 0.78rem; margin: 4px 0; font-family: monospace; }
+        .metric-popup .mp-criteria { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08); color: #aaa; }
+        .metric-popup .mp-criteria b { color: #fff; }
+
         /* ================================
          * レスポンシブ (モバイル対応)
          * ================================ */
@@ -822,24 +842,26 @@
                 const sectorText = stock.Sector33 || '-';
                 tr.innerHTML = `
                     <td class="rank-cell ${getRankClass(rank)}">${rank}</td>
-                    <td class="score-cell ${getScoreClass(stock.Score)}">${stock.Score.toFixed(0)}</td>
+                    <td class="score-cell metric-cell ${getScoreClass(stock.Score)}" data-metric="Score">${stock.Score.toFixed(0)}</td>
                     <td class="code-cell">${stock.Code}</td>
                     <td class="name-cell" title="${stock.Name}">${stock.Name}</td>
-                    <td class="number-cell">${price}</td>
-                    <td class="number-cell ${marketCap.class}">${marketCap.text}</td>
-                    <td class="number-cell ${eps.class}">${eps.text}</td>
-                    <td class="number-cell ${roe.class}">${roe.text}</td>
-                    <td class="number-cell ${per.class}">${per.text}</td>
-                    <td class="number-cell ${pbr.class}">${pbr.text}</td>
-                    <td class="number-cell ${equityRatio.class}">${equityRatio.text}</td>
-                    <td class="number-cell ${rs.class}">${rs.text}</td>
-                    <td class="number-cell ${q0eps.class}">${q0eps.text}</td>
-                    <td class="number-cell ${q1eps.class}">${q1eps.text}</td>
-                    <td class="number-cell ${y0eps.class}">${y0eps.text}</td>
-                    <td class="number-cell ${cagr.class}">${cagr.text}</td>
+                    <td class="number-cell metric-cell" data-metric="LastPrice">${price}</td>
+                    <td class="number-cell metric-cell ${marketCap.class}" data-metric="MarketCap">${marketCap.text}</td>
+                    <td class="number-cell metric-cell ${eps.class}" data-metric="EPS">${eps.text}</td>
+                    <td class="number-cell metric-cell ${roe.class}" data-metric="ROE">${roe.text}</td>
+                    <td class="number-cell metric-cell ${per.class}" data-metric="PER">${per.text}</td>
+                    <td class="number-cell metric-cell ${pbr.class}" data-metric="PBR">${pbr.text}</td>
+                    <td class="number-cell metric-cell ${equityRatio.class}" data-metric="EquityRatio">${equityRatio.text}</td>
+                    <td class="number-cell metric-cell ${rs.class}" data-metric="RS">${rs.text}</td>
+                    <td class="number-cell metric-cell ${q0eps.class}" data-metric="Q0EPSYoY">${q0eps.text}</td>
+                    <td class="number-cell metric-cell ${q1eps.class}" data-metric="Q1EPSYoY">${q1eps.text}</td>
+                    <td class="number-cell metric-cell ${y0eps.class}" data-metric="Y0EPSYoY">${y0eps.text}</td>
+                    <td class="number-cell metric-cell ${cagr.class}" data-metric="EPS3YCAGR">${cagr.text}</td>
                     <td class="name-cell" title="${sectorText}" style="font-size:0.78rem;max-width:120px;color:#888;">${sectorText}</td>
                 `;
-                tr.addEventListener('click', () => {
+                tr.addEventListener('click', (e) => {
+                    // metric-cell クリックはポップアップ優先で遷移しない
+                    if (e.target.closest('.metric-cell')) return;
                     window.location.href = `stock-detail.html?code=${stock.Code}&from=oneil-screen.html`;
                 });
                 tbody.appendChild(tr);
@@ -893,6 +915,53 @@
 
         // 初期読み込み
         loadData();
+
+        // 指標解説ポップアップ
+        const METRIC_INFO = {
+            Score:       { name: 'スコア',       formula: 'パラメータ閾値を超えた指標のウェイト合算 (ベース50)', criteria: '<b>120以上</b>=複数の好条件達成、<b>100以上</b>=注目候補、設定パネルでカスタマイズ可能' },
+            LastPrice:   { name: '株価',         formula: '直近終値', criteria: '前日比は表示色で確認' },
+            MarketCap:   { name: '時価総額',     formula: '株価 × 発行済株式数', criteria: '<b>大型株</b>: 1兆円以上 / <b>中型</b>: 1000億〜1兆 / <b>小型</b>: 1000億未満' },
+            EPS:         { name: 'EPS',          formula: '純利益 ÷ 発行済株式数', criteria: '1株あたりの利益。100円以上=安定企業の目安' },
+            ROE:         { name: 'ROE',          formula: '純利益 ÷ 純資産 × 100 (%)', criteria: '<b>15%以上</b>=高収益、<b>10〜15%</b>=良好、<b>5%未満</b>=低収益' },
+            PER:         { name: 'PER',          formula: '時価総額 ÷ 純利益', criteria: '<b>10倍未満</b>=割安、<b>10〜15倍</b>=適正、<b>20倍以上</b>=割高' },
+            PBR:         { name: 'PBR',          formula: '時価総額 ÷ 純資産', criteria: '<b>1倍未満</b>=資産以下で取引、<b>1〜2倍</b>=適正、<b>3倍以上</b>=成長期待' },
+            EquityRatio: { name: '自己資本比率', formula: '純資産 ÷ 総資産 × 100 (%)', criteria: '<b>50%以上</b>=財務健全、<b>20%未満</b>=要注意' },
+            RS:          { name: 'RS',           formula: '3/6/9/12ヶ月騰落率の加重百分位 (1-99)', criteria: '<b>80以上</b>=上位20%、<b>90以上</b>=トップ10%、オニール推奨は85以上' },
+            Q0EPSYoY:    { name: 'Q0 EPS YoY',   formula: '直近四半期EPS の前年同期比 (%)', criteria: '<b>25%以上</b>=オニール基準クリア、<b>50%以上</b>=🚀急成長、負値=減益' },
+            Q1EPSYoY:    { name: 'Q1 EPS YoY',   formula: '1四半期前EPS の前年同期比 (%)', criteria: 'Q0 と組み合わせて成長加速を判定 (Q0 > Q1 なら加速中)' },
+            Y0EPSYoY:    { name: 'Y0 EPS YoY',   formula: '直近通期EPS の前年比 (%)', criteria: '<b>20%以上</b>=優良成長、長期トレンドの確認に' },
+            EPS3YCAGR:   { name: '3Y EPS CAGR',  formula: '3年間の年平均成長率 (%)', criteria: '<b>15%以上</b>=長期優良、<b>25%以上</b>=長期急成長、安定成長企業の指標' },
+        };
+        function showMetricPopup(cell) {
+            const m = cell.dataset.metric, info = METRIC_INFO[m];
+            if (!info) return;
+            closeMetricPopup();
+            const popup = document.createElement('div');
+            popup.className = 'metric-popup';
+            popup.id = '__metric_popup';
+            popup.innerHTML = `
+                <div class="mp-title"><span>${info.name}</span><span class="mp-close" onclick="closeMetricPopup()">×</span></div>
+                <div class="mp-value">${cell.textContent.trim()}</div>
+                <div class="mp-formula">📐 ${info.formula}</div>
+                <div class="mp-criteria">${info.criteria}</div>`;
+            document.body.appendChild(popup);
+            const rect = cell.getBoundingClientRect();
+            let x = rect.right + 8, y = rect.top;
+            if (x + popup.offsetWidth > window.innerWidth - 10) x = rect.left - popup.offsetWidth - 8;
+            if (x < 10) x = 10;
+            if (y + popup.offsetHeight > window.innerHeight - 10) y = window.innerHeight - popup.offsetHeight - 10;
+            popup.style.left = x + 'px';
+            popup.style.top = y + 'px';
+        }
+        function closeMetricPopup() {
+            const p = document.getElementById('__metric_popup');
+            if (p) p.remove();
+        }
+        document.addEventListener('click', (e) => {
+            const cell = e.target.closest('.metric-cell');
+            if (cell) { showMetricPopup(cell); e.stopPropagation(); }
+            else if (!e.target.closest('.metric-popup')) closeMetricPopup();
+        });
     </script>
 </body>
 

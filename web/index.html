@@ -399,6 +399,40 @@
             gap: 15px;
         }
     
+        /* 指標解説ポップアップ */
+        .metric-cell { cursor: help; transition: background 0.15s; }
+        .metric-cell:hover { background: rgba(0, 217, 255, 0.08) !important; }
+        .metric-popup {
+            position: fixed; z-index: 10000;
+            background: rgba(15, 20, 35, 0.98); backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 217, 255, 0.4);
+            border-radius: 12px; padding: 14px 18px;
+            min-width: 260px; max-width: 360px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+            color: #e0e0e0; font-size: 0.85rem; line-height: 1.6;
+            pointer-events: auto;
+        }
+        .metric-popup .mp-title {
+            font-size: 1rem; font-weight: 700; color: #00d9ff; margin-bottom: 4px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .metric-popup .mp-close {
+            cursor: pointer; color: #888; padding: 0 6px; font-size: 1.2rem;
+            line-height: 1;
+        }
+        .metric-popup .mp-close:hover { color: #fff; }
+        .metric-popup .mp-value {
+            font-size: 1.4rem; font-weight: 700; color: #00ff88; margin: 6px 0;
+        }
+        .metric-popup .mp-formula {
+            color: #888; font-size: 0.78rem; margin: 4px 0; font-family: monospace;
+        }
+        .metric-popup .mp-criteria {
+            margin-top: 8px; padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.08); color: #aaa;
+        }
+        .metric-popup .mp-criteria b { color: #fff; }
+
         /* ================================
          * レスポンシブ (モバイル対応)
          * ================================ */
@@ -757,19 +791,19 @@
                 tr.innerHTML = `
                     <td class="code-cell"><a class="code-link" href="stock-detail.html?code=${stock.Code}&from=index.html">${stock.Code}</a></td>
                     <td class="name-cell" title="${stock.Name}"><a class="code-link" href="stock-detail.html?code=${stock.Code}&from=index.html">${stock.Name}</a></td>
-                    <td class="number-cell ${priceClass}">${priceText}</td>
-                    <td class="number-cell ${marketCap.class}">${marketCap.text}</td>
-                    <td class="number-cell ${eps.class}">${eps.text}</td>
-                    <td class="number-cell ${roe.class}">${roe.text}</td>
-                    <td class="number-cell ${per.class}">${per.text}</td>
-                    <td class="number-cell ${pbr.class}">${pbr.text}</td>
-                    <td class="number-cell ${equityRatio.class}">${equityRatio.text}</td>
-                    <td class="number-cell ${netNet.class}">${netNet.text}</td>
-                    <td class="number-cell ${rs.class}">${rs.text}</td>
+                    <td class="number-cell metric-cell ${priceClass}" data-metric="LastPrice">${priceText}</td>
+                    <td class="number-cell metric-cell ${marketCap.class}" data-metric="MarketCap">${marketCap.text}</td>
+                    <td class="number-cell metric-cell ${eps.class}" data-metric="EPS">${eps.text}</td>
+                    <td class="number-cell metric-cell ${roe.class}" data-metric="ROE">${roe.text}</td>
+                    <td class="number-cell metric-cell ${per.class}" data-metric="PER">${per.text}</td>
+                    <td class="number-cell metric-cell ${pbr.class}" data-metric="PBR">${pbr.text}</td>
+                    <td class="number-cell metric-cell ${equityRatio.class}" data-metric="EquityRatio">${equityRatio.text}</td>
+                    <td class="number-cell metric-cell ${netNet.class}" data-metric="NetNetRatio">${netNet.text}</td>
+                    <td class="number-cell metric-cell ${rs.class}" data-metric="RS">${rs.text}</td>
                     <td class="number-cell ${segClass}" style="font-size:0.8rem;">${segText}</td>
                     <td class="name-cell" title="${sectorText}" style="font-size:0.8rem;max-width:120px;">${sectorText}</td>
-                    <td class="number-cell ${sales.class}">${sales.text}</td>
-                    <td class="number-cell ${netIncome.class}">${netIncome.text}</td>
+                    <td class="number-cell metric-cell ${sales.class}" data-metric="NetSales">${sales.text}</td>
+                    <td class="number-cell metric-cell ${netIncome.class}" data-metric="NetIncome">${netIncome.text}</td>
                     <td class="date-cell">${stock.UpdatedAt ? stock.UpdatedAt.substring(0, 10) : '-'}</td>
                 `;
                 tbody.appendChild(tr);
@@ -928,6 +962,65 @@
 
         // ページ読み込み時に実行
         loadData();
+
+        // ==============================================================
+        // 指標解説ポップアップ (data-metric セルクリックで詳細表示)
+        // ==============================================================
+        const METRIC_INFO = {
+            LastPrice:   { name: '株価',         formula: '直近終値',                                criteria: '前日比 +0.5%以上は緑、-0.5%以下は赤で表示' },
+            MarketCap:   { name: '時価総額',     formula: '株価 × 発行済株式数',                    criteria: '<b>大型株</b>: 1兆円以上 / <b>中型株</b>: 1000億〜1兆 / <b>小型株</b>: 1000億未満' },
+            EPS:         { name: 'EPS',          formula: '純利益 ÷ 発行済株式数',                  criteria: '1株あたりの利益。100円以上=安定企業、500円以上=高収益企業の目安' },
+            ROE:         { name: 'ROE',          formula: '純利益 ÷ 純資産 × 100 (%)',              criteria: '<b>15%以上</b>=高収益、<b>10〜15%</b>=良好、<b>5%未満</b>=低収益' },
+            PER:         { name: 'PER',          formula: '時価総額 ÷ 純利益',                      criteria: '<b>10倍未満</b>=割安、<b>10〜15倍</b>=適正、<b>20倍以上</b>=割高目安' },
+            PBR:         { name: 'PBR',          formula: '時価総額 ÷ 純資産',                      criteria: '<b>1倍未満</b>=資産以下で取引(割安)、<b>1〜2倍</b>=適正、<b>3倍以上</b>=成長期待' },
+            EquityRatio: { name: '自己資本比率', formula: '純資産 ÷ 総資産 × 100 (%)',              criteria: '<b>50%以上</b>=財務健全、<b>30〜50%</b>=普通、<b>20%未満</b>=要注意' },
+            NetNetRatio: { name: 'ネットネット比率', formula: '(流動資産 − 総負債) ÷ 時価総額',     criteria: '<b>1.0以上</b>=💎超割安(清算価値>時価総額)、<b>0.67以上</b>=グレアム基準クリア' },
+            RS:          { name: 'RS (相対力)',  formula: '3/6/9/12ヶ月騰落率を加重した百分位 (1-99)', criteria: '<b>80以上</b>=上位20%、<b>90以上</b>=トップ10%、オニール推奨は85以上' },
+            NetSales:    { name: '売上高',       formula: 'EDINET XBRL 由来 (連結ベース)',          criteria: '前期比成長率は財務時系列で確認可能' },
+            NetIncome:   { name: '純利益',       formula: '親会社株主に帰属する当期純利益',          criteria: '赤字は赤色表示。EPS = 純利益 ÷ 発行済株式数 で1株利益を算出' },
+        };
+
+        function showMetricPopup(cell, e) {
+            const metric = cell.dataset.metric;
+            const info = METRIC_INFO[metric];
+            if (!info) return;
+            closeMetricPopup();
+
+            const popup = document.createElement('div');
+            popup.className = 'metric-popup';
+            popup.id = '__metric_popup';
+            popup.innerHTML = `
+                <div class="mp-title">
+                    <span>${info.name}</span>
+                    <span class="mp-close" onclick="closeMetricPopup()">×</span>
+                </div>
+                <div class="mp-value">${cell.textContent.trim()}</div>
+                <div class="mp-formula">📐 ${info.formula}</div>
+                <div class="mp-criteria">${info.criteria}</div>
+            `;
+            document.body.appendChild(popup);
+
+            // 配置: クリック位置の右下、画面端は寄せる
+            const rect = cell.getBoundingClientRect();
+            let x = rect.right + 8;
+            let y = rect.top;
+            const pw = popup.offsetWidth;
+            const ph = popup.offsetHeight;
+            if (x + pw > window.innerWidth - 10) x = rect.left - pw - 8;
+            if (x < 10) x = 10;
+            if (y + ph > window.innerHeight - 10) y = window.innerHeight - ph - 10;
+            popup.style.left = x + 'px';
+            popup.style.top = y + 'px';
+        }
+        function closeMetricPopup() {
+            const p = document.getElementById('__metric_popup');
+            if (p) p.remove();
+        }
+        document.addEventListener('click', (e) => {
+            const cell = e.target.closest('.metric-cell');
+            if (cell) { showMetricPopup(cell, e); e.stopPropagation(); }
+            else if (!e.target.closest('.metric-popup')) closeMetricPopup();
+        });
     </script>
 </body>
 
