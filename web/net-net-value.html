@@ -963,6 +963,36 @@
                 <div class="tab-bar animate-in" style="display:flex;gap:0;margin-bottom:0;border-radius:12px 12px 0 0;overflow:hidden;border:1px solid rgba(255,255,255,0.06);border-bottom:none;">
                     <button class="tab-btn active" id="tab-ranking" onclick="switchTab('ranking')" style="flex:1;padding:14px 20px;background:rgba(0,255,136,0.1);border:none;color:#00ff88;font-weight:600;cursor:pointer;font-size:0.9rem;transition:all 0.2s;">📊 ランキング</button>
                     <button class="tab-btn" id="tab-chart" onclick="switchTab('chart')" style="flex:1;padding:14px 20px;background:rgba(255,255,255,0.02);border:none;color:#888;font-weight:600;cursor:pointer;font-size:0.9rem;transition:all 0.2s;">📈 PBR散布図</button>
+                    <button class="tab-btn" id="tab-sector" onclick="switchTab('sector')" style="flex:1;padding:14px 20px;background:rgba(255,255,255,0.02);border:none;color:#888;font-weight:600;cursor:pointer;font-size:0.9rem;transition:all 0.2s;">🏭 業種別集計</button>
+                </div>
+
+                <!-- 業種別集計パネル -->
+                <div id="panel-sector" style="display:none;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-top:none;border-radius:0 0 12px 12px;padding:24px;margin-bottom:30px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+                        <div style="font-size:1.1rem;font-weight:600;color:#e0e0e0;">業種別 ネットネット銘柄分布</div>
+                        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                            <label style="font-size:0.75rem;color:#888;">業種粒度:</label>
+                            <select id="sector-granularity" style="padding:4px 8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#e0e0e0;font-size:0.8rem;">
+                                <option value="Sector17">17業種</option>
+                                <option value="Sector33">33業種</option>
+                            </select>
+                            <label style="font-size:0.75rem;color:#888;">指標:</label>
+                            <select id="sector-metric" style="padding:4px 8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#e0e0e0;font-size:0.8rem;">
+                                <option value="netnet_count">ネットネット銘柄数 (≥1.0)</option>
+                                <option value="graham_count">グレアム基準銘柄数 (≥0.67)</option>
+                                <option value="avg_pbr">平均PBR</option>
+                                <option value="avg_netnet">平均ネットネット比率</option>
+                                <option value="avg_equity">平均自己資本率</option>
+                                <option value="total_count">銘柄数</option>
+                            </select>
+                        </div>
+                    </div>
+                    <canvas id="sector-chart" width="1200" height="500" style="width:100%;height:500px;border-radius:8px;background:rgba(0,0,0,0.2);"></canvas>
+                    <p style="color:#666;font-size:0.78rem;margin-top:10px;line-height:1.5;">
+                        💡 業種別に集計することで、どのセクタに割安銘柄が偏っているかが見える。
+                        「ネットネット銘柄数」が多い業種は構造的に低評価されている可能性、
+                        「平均PBR」が低い業種は全体的に資産価値以下で取引されている。
+                    </p>
                 </div>
 
                 <!-- PBR散布図パネル -->
@@ -1571,28 +1601,39 @@
         // タブ切替
         // ==============================================================
         function switchTab(tab) {
-            const rankingPanel = document.getElementById('panel-ranking');
-            const chartPanel = document.getElementById('panel-chart');
-            const tabRanking = document.getElementById('tab-ranking');
-            const tabChart = document.getElementById('tab-chart');
+            const panels = {
+                ranking: document.getElementById('panel-ranking'),
+                chart: document.getElementById('panel-chart'),
+                sector: document.getElementById('panel-sector'),
+            };
+            const tabs = {
+                ranking: document.getElementById('tab-ranking'),
+                chart: document.getElementById('tab-chart'),
+                sector: document.getElementById('tab-sector'),
+            };
+            const tabColors = {
+                ranking: { bg: 'rgba(0,255,136,0.1)', fg: '#00ff88' },
+                chart:   { bg: 'rgba(0,217,255,0.1)', fg: '#00d9ff' },
+                sector:  { bg: 'rgba(255,170,0,0.12)', fg: '#ffaa00' },
+            };
 
-            if (tab === 'ranking') {
-                rankingPanel.style.display = '';
-                chartPanel.style.display = 'none';
-                tabRanking.style.background = 'rgba(0,255,136,0.1)';
-                tabRanking.style.color = '#00ff88';
-                tabChart.style.background = 'rgba(255,255,255,0.02)';
-                tabChart.style.color = '#888';
-            } else {
-                rankingPanel.style.display = 'none';
-                chartPanel.style.display = '';
-                chartPanel.style.borderRadius = '0 0 12px 12px';
-                tabChart.style.background = 'rgba(0,217,255,0.1)';
-                tabChart.style.color = '#00d9ff';
-                tabRanking.style.background = 'rgba(255,255,255,0.02)';
-                tabRanking.style.color = '#888';
-                renderScatterChart();
-            }
+            // すべて非表示にリセット
+            Object.entries(panels).forEach(([k, el]) => {
+                el.style.display = (k === tab) ? '' : 'none';
+                if (k === tab && k !== 'ranking') el.style.borderRadius = '0 0 12px 12px';
+            });
+            Object.entries(tabs).forEach(([k, el]) => {
+                if (k === tab) {
+                    el.style.background = tabColors[k].bg;
+                    el.style.color = tabColors[k].fg;
+                } else {
+                    el.style.background = 'rgba(255,255,255,0.02)';
+                    el.style.color = '#888';
+                }
+            });
+
+            if (tab === 'chart') renderScatterChart();
+            if (tab === 'sector') renderSectorChart();
         }
 
         // ==============================================================
@@ -1817,6 +1858,151 @@
                 renderScatterChart();
             }
         }).observe(document.getElementById('panel-chart'));
+
+        // ==============================================================
+        // 業種別集計チャート (棒グラフ)
+        // ==============================================================
+        function renderSectorChart() {
+            const canvas = document.getElementById('sector-chart');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.clientWidth * dpr;
+            canvas.height = canvas.clientHeight * dpr;
+            ctx.scale(dpr, dpr);
+            const W = canvas.clientWidth;
+            const H = canvas.clientHeight;
+            const pad = { top: 30, right: 30, bottom: 110, left: 70 };
+
+            const granularity = document.getElementById('sector-granularity').value;
+            const metric = document.getElementById('sector-metric').value;
+
+            // 業種別に集計
+            const data = getFilteredAndSorted();
+            const groups = {};
+            data.forEach(s => {
+                const sec = s[granularity];
+                if (!sec) return;
+                if (!groups[sec]) groups[sec] = [];
+                groups[sec].push(s);
+            });
+
+            const aggregates = Object.entries(groups).map(([sec, stocks]) => {
+                const netnetCount = stocks.filter(s => s.netNetRatio >= 1).length;
+                const grahamCount = stocks.filter(s => s.netNetRatio >= 0.67).length;
+                const validPbr = stocks.filter(s => s.PBR != null && isFinite(s.PBR));
+                const avgPbr = validPbr.length > 0 ? validPbr.reduce((a, b) => a + b.PBR, 0) / validPbr.length : 0;
+                const validNn = stocks.filter(s => s.netNetRatio != null && isFinite(s.netNetRatio));
+                const avgNetnet = validNn.length > 0 ? validNn.reduce((a, b) => a + b.netNetRatio, 0) / validNn.length : 0;
+                const validEq = stocks.filter(s => s.EquityRatio != null && isFinite(s.EquityRatio));
+                const avgEquity = validEq.length > 0 ? validEq.reduce((a, b) => a + b.EquityRatio, 0) / validEq.length : 0;
+                return {
+                    sector: sec,
+                    netnet_count: netnetCount,
+                    graham_count: grahamCount,
+                    avg_pbr: avgPbr,
+                    avg_netnet: avgNetnet,
+                    avg_equity: avgEquity,
+                    total_count: stocks.length,
+                };
+            });
+
+            // 指標値でソート (降順)
+            aggregates.sort((a, b) => b[metric] - a[metric]);
+
+            ctx.clearRect(0, 0, W, H);
+            if (aggregates.length === 0) {
+                ctx.fillStyle = '#888';
+                ctx.font = '14px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('データがありません', W / 2, H / 2);
+                return;
+            }
+
+            const plotW = W - pad.left - pad.right;
+            const plotH = H - pad.top - pad.bottom;
+            const maxVal = Math.max(...aggregates.map(a => a[metric]));
+            const barW = plotW / aggregates.length;
+
+            const metricLabels = {
+                netnet_count: 'ネットネット銘柄数',
+                graham_count: 'グレアム基準銘柄数',
+                avg_pbr: '平均PBR',
+                avg_netnet: '平均ネットネット比率',
+                avg_equity: '平均自己資本率 (%)',
+                total_count: '銘柄数',
+            };
+            const metricColors = {
+                netnet_count: '#00ff88',
+                graham_count: '#00d9ff',
+                avg_pbr: '#ffaa00',
+                avg_netnet: '#c084fc',
+                avg_equity: '#00d9ff',
+                total_count: '#888',
+            };
+            const color = metricColors[metric] || '#00d9ff';
+
+            // Y軸グリッド + ラベル
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 1;
+            ctx.fillStyle = '#888';
+            ctx.font = '10px Inter, sans-serif';
+            ctx.textAlign = 'right';
+            for (let i = 0; i <= 5; i++) {
+                const y = pad.top + plotH * (1 - i / 5);
+                const v = maxVal * i / 5;
+                ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + plotW, y); ctx.stroke();
+                ctx.fillText(formatSectorValue(v, metric), pad.left - 8, y + 3);
+            }
+
+            // 棒
+            aggregates.forEach((a, i) => {
+                const x = pad.left + barW * i;
+                const h = plotH * (a[metric] / maxVal);
+                const y = pad.top + plotH - h;
+                ctx.fillStyle = color + 'cc';
+                ctx.fillRect(x + 4, y, barW - 8, h);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x + 4, y, barW - 8, h);
+
+                // 値ラベル (棒の上)
+                ctx.fillStyle = '#e0e0e0';
+                ctx.font = '10px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(formatSectorValue(a[metric], metric), x + barW / 2, y - 4);
+
+                // X軸ラベル (45度回転)
+                ctx.save();
+                ctx.translate(x + barW / 2, pad.top + plotH + 12);
+                ctx.rotate(-Math.PI / 4);
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#aaa';
+                ctx.font = '10px Inter, sans-serif';
+                ctx.fillText(a.sector + ' (' + a.total_count + ')', 0, 0);
+                ctx.restore();
+            });
+
+            // タイトル
+            ctx.fillStyle = '#888';
+            ctx.font = '11px Inter, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('指標: ' + metricLabels[metric], pad.left, 18);
+        }
+
+        function formatSectorValue(v, metric) {
+            if (metric === 'avg_pbr' || metric === 'avg_netnet') return v.toFixed(2);
+            if (metric === 'avg_equity') return v.toFixed(1) + '%';
+            return Math.round(v).toString();
+        }
+
+        document.getElementById('sector-granularity').addEventListener('change', renderSectorChart);
+        document.getElementById('sector-metric').addEventListener('change', renderSectorChart);
+
+        new ResizeObserver(() => {
+            if (document.getElementById('panel-sector').style.display !== 'none') {
+                renderSectorChart();
+            }
+        }).observe(document.getElementById('panel-sector'));
     </script>
 </body>
 
