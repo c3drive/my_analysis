@@ -60,9 +60,12 @@ func initXbrlDB() (*sql.DB, error) {
 		"ALTER TABLE stocks ADD COLUMN inventories INTEGER",
 		"ALTER TABLE stocks ADD COLUMN non_current_liabilities INTEGER",
 		"ALTER TABLE stocks ADD COLUMN shareholders_equity INTEGER",
-		"ALTER TABLE stocks ADD COLUMN market_segment TEXT", // JPX: プライム/スタンダード/グロース
-		"ALTER TABLE stocks ADD COLUMN sector_33 TEXT",      // JPX: 33業種分類
-		"ALTER TABLE stocks ADD COLUMN sector_17 TEXT",      // JPX: 17業種分類
+		"ALTER TABLE stocks ADD COLUMN market_segment TEXT",          // JPX: プライム/スタンダード/グロース
+		"ALTER TABLE stocks ADD COLUMN sector_33 TEXT",               // JPX: 33業種分類
+		"ALTER TABLE stocks ADD COLUMN sector_17 TEXT",               // JPX: 17業種分類
+		"ALTER TABLE stocks ADD COLUMN operating_cash_flow INTEGER",  // Phase 1b: F-Score用 営業CF
+		"ALTER TABLE stocks ADD COLUMN gross_profit INTEGER",         // Phase 1b: F-Score用 売上総利益
+		"ALTER TABLE stocks ADD COLUMN dividend_per_share REAL",      // Phase 2: 高配当用 1株配当
 	}
 	for _, stmt := range alterStatements {
 		db.Exec(stmt)
@@ -93,6 +96,14 @@ func initXbrlDB() (*sql.DB, error) {
 		shareholders_equity INTEGER,
 		PRIMARY KEY (code, submission_date)
 	);`)
+	// stock_financials への Phase 1b/2 拡張カラム (テーブル作成後の ALTER は冪等)
+	for _, alt := range []string{
+		"ALTER TABLE stock_financials ADD COLUMN operating_cash_flow INTEGER",
+		"ALTER TABLE stock_financials ADD COLUMN gross_profit INTEGER",
+		"ALTER TABLE stock_financials ADD COLUMN dividend_per_share REAL",
+	} {
+		db.Exec(alt)
+	}
 	if err != nil {
 		log.Printf("⚠️ stock_financials table: %v", err)
 	}
@@ -313,8 +324,9 @@ func saveStock(db *sql.DB, code, name, updatedAt string, data FinancialData) err
 			total_assets, net_assets, current_assets,
 			liabilities, current_liabilities, cash_and_deposits, shares_issued,
 			investment_securities, securities, accounts_receivable, inventories,
-			non_current_liabilities, shareholders_equity
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			non_current_liabilities, shareholders_equity,
+			operating_cash_flow, gross_profit, dividend_per_share
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(code) DO UPDATE SET
 			name = excluded.name,
 			updated_at = CASE WHEN excluded.updated_at != '' THEN excluded.updated_at ELSE stocks.updated_at END,
@@ -333,7 +345,10 @@ func saveStock(db *sql.DB, code, name, updatedAt string, data FinancialData) err
 			accounts_receivable = CASE WHEN excluded.accounts_receivable > 0 THEN excluded.accounts_receivable ELSE stocks.accounts_receivable END,
 			inventories = CASE WHEN excluded.inventories > 0 THEN excluded.inventories ELSE stocks.inventories END,
 			non_current_liabilities = CASE WHEN excluded.non_current_liabilities > 0 THEN excluded.non_current_liabilities ELSE stocks.non_current_liabilities END,
-			shareholders_equity = CASE WHEN excluded.shareholders_equity > 0 THEN excluded.shareholders_equity ELSE stocks.shareholders_equity END
+			shareholders_equity = CASE WHEN excluded.shareholders_equity > 0 THEN excluded.shareholders_equity ELSE stocks.shareholders_equity END,
+			operating_cash_flow = CASE WHEN excluded.operating_cash_flow != 0 THEN excluded.operating_cash_flow ELSE stocks.operating_cash_flow END,
+			gross_profit = CASE WHEN excluded.gross_profit > 0 THEN excluded.gross_profit ELSE stocks.gross_profit END,
+			dividend_per_share = CASE WHEN excluded.dividend_per_share > 0 THEN excluded.dividend_per_share ELSE stocks.dividend_per_share END
 	`,
 		code, name, updatedAt,
 		data.NetSales, data.OperatingIncome, data.NetIncome,
@@ -341,6 +356,7 @@ func saveStock(db *sql.DB, code, name, updatedAt string, data FinancialData) err
 		data.Liabilities, data.CurrentLiabilities, data.CashAndDeposits, data.SharesIssued,
 		data.InvestmentSecurities, data.Securities, data.AccountsReceivable, data.Inventories,
 		data.NonCurrentLiabilities, data.ShareholdersEquity,
+		data.OperatingCashFlow, data.GrossProfit, data.DividendPerShare,
 	)
 	return err
 }
@@ -354,8 +370,9 @@ func saveStockFinancial(db *sql.DB, code, docType, submissionDate, docDescriptio
 			total_assets, net_assets, current_assets,
 			liabilities, current_liabilities, cash_and_deposits, shares_issued,
 			investment_securities, securities, accounts_receivable, inventories,
-			non_current_liabilities, shareholders_equity
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			non_current_liabilities, shareholders_equity,
+			operating_cash_flow, gross_profit, dividend_per_share
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(code, submission_date) DO UPDATE SET
 			doc_type = excluded.doc_type,
 			doc_description = excluded.doc_description,
@@ -374,7 +391,10 @@ func saveStockFinancial(db *sql.DB, code, docType, submissionDate, docDescriptio
 			accounts_receivable = CASE WHEN excluded.accounts_receivable > 0 THEN excluded.accounts_receivable ELSE stock_financials.accounts_receivable END,
 			inventories = CASE WHEN excluded.inventories > 0 THEN excluded.inventories ELSE stock_financials.inventories END,
 			non_current_liabilities = CASE WHEN excluded.non_current_liabilities > 0 THEN excluded.non_current_liabilities ELSE stock_financials.non_current_liabilities END,
-			shareholders_equity = CASE WHEN excluded.shareholders_equity > 0 THEN excluded.shareholders_equity ELSE stock_financials.shareholders_equity END
+			shareholders_equity = CASE WHEN excluded.shareholders_equity > 0 THEN excluded.shareholders_equity ELSE stock_financials.shareholders_equity END,
+			operating_cash_flow = CASE WHEN excluded.operating_cash_flow != 0 THEN excluded.operating_cash_flow ELSE stock_financials.operating_cash_flow END,
+			gross_profit = CASE WHEN excluded.gross_profit > 0 THEN excluded.gross_profit ELSE stock_financials.gross_profit END,
+			dividend_per_share = CASE WHEN excluded.dividend_per_share > 0 THEN excluded.dividend_per_share ELSE stock_financials.dividend_per_share END
 	`,
 		code, docType, submissionDate, docDescription,
 		data.NetSales, data.OperatingIncome, data.NetIncome,
@@ -382,6 +402,7 @@ func saveStockFinancial(db *sql.DB, code, docType, submissionDate, docDescriptio
 		data.Liabilities, data.CurrentLiabilities, data.CashAndDeposits, data.SharesIssued,
 		data.InvestmentSecurities, data.Securities, data.AccountsReceivable, data.Inventories,
 		data.NonCurrentLiabilities, data.ShareholdersEquity,
+		data.OperatingCashFlow, data.GrossProfit, data.DividendPerShare,
 	)
 	return err
 }

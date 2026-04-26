@@ -72,6 +72,10 @@ type FinancialData struct {
 	Inventories           int64
 	NonCurrentLiabilities int64
 	ShareholdersEquity    int64
+	// Phase 1b/2 拡張
+	OperatingCashFlow int64   // 営業 CF (F-Score 用)
+	GrossProfit       int64   // 売上総利益 (F-Score 用)
+	DividendPerShare  float64 // 1株配当 (高配当スクリーニング用、小数)
 }
 
 // StockPrice は株価データを保持する構造体

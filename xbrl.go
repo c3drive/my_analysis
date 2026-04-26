@@ -166,6 +166,23 @@ var xbrlTagPatterns = map[string]*regexp.Regexp{
 	"ShareholdersEquityFallback": regexp.MustCompile(`<jppfs_cor:ShareholdersEquity[^>]*contextRef="CurrentQuarterInstant[^"]*"[^>]*>(\d+)</`),
 	// 株主資本合計 (別名)
 	"ShareholdersEquityFallback2": regexp.MustCompile(`<jppfs_cor:StockholdersEquity[^>]*contextRef="CurrentYearInstant[^"]*"[^>]*>(\d+)</`),
+
+	// ====== 営業活動によるキャッシュフロー (CFO) ======
+	// Phase 1b (バリュー F9) で使用
+	"OperatingCashFlow":          regexp.MustCompile(`<jppfs_cor:CashFlowsFromUsedInOperatingActivities[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
+	"OperatingCashFlowFallback":  regexp.MustCompile(`<jppfs_cor:NetCashProvidedByUsedInOperatingActivities[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
+	"OperatingCashFlowFallback2": regexp.MustCompile(`<jpcrp_cor:CashFlowsFromOperatingActivitiesSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
+
+	// ====== 売上総利益 (粗利) ======
+	// Phase 1b (バリュー F9) で使用
+	"GrossProfit":         regexp.MustCompile(`<jppfs_cor:GrossProfit[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
+	"GrossProfitFallback": regexp.MustCompile(`<jppfs_cor:GrossProfitsLosses[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>(-?\d+)</`),
+
+	// ====== 1株配当 (DPS) ======
+	// Phase 2 (高配当) で使用。注: 小数 ([\d.]+) なので他タグの (\d+) と異なる
+	"DividendPerShare":          regexp.MustCompile(`<jpcrp_cor:DividendPaidPerShareSummaryOfBusinessResults[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>([\d.]+)</`),
+	"DividendPerShareFallback":  regexp.MustCompile(`<jpcrp_cor:DividendPerShare[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>([\d.]+)</`),
+	"DividendPerShareFallback2": regexp.MustCompile(`<jppfs_cor:DividendPerShare[^>]*contextRef="CurrentYearDuration[^"]*"[^>]*>([\d.]+)</`),
 }
 
 // downloadAndParseXBRL はXBRLをダウンロードして財務データを抽出する
@@ -312,6 +329,16 @@ func applyXBRLValue(data *FinancialData, found map[string]bool, baseName string,
 			data.ShareholdersEquity = value
 			found["ShareholdersEquity"] = true
 		}
+	case "OperatingCashFlow":
+		if !found["OperatingCashFlow"] {
+			data.OperatingCashFlow = value
+			found["OperatingCashFlow"] = true
+		}
+	case "GrossProfit":
+		if !found["GrossProfit"] {
+			data.GrossProfit = value
+			found["GrossProfit"] = true
+		}
 	}
 }
 
@@ -349,9 +376,19 @@ func parseXBRLFromZip(zipReader *zip.Reader) (FinancialData, error) {
 
 			matches := pattern.FindStringSubmatch(contentStr)
 			if len(matches) >= 2 {
+				// DividendPerShare は小数 (例: 25.5円) なので別処理
+				if baseName == "DividendPerShare" {
+					if !found["DividendPerShare"] {
+						if dps, err := strconv.ParseFloat(matches[1], 64); err == nil && dps > 0 {
+							data.DividendPerShare = dps
+							found["DividendPerShare"] = true
+						}
+					}
+					continue
+				}
 				value, _ := strconv.ParseInt(matches[1], 10, 64)
-				// 売上・資産系はプラスのみ、利益系はマイナスも許容
-				isProfit := baseName == "OperatingIncome" || baseName == "OrdinaryIncome" || baseName == "NetIncome"
+				// 売上・資産系はプラスのみ、利益系・CFOはマイナスも許容
+				isProfit := baseName == "OperatingIncome" || baseName == "OrdinaryIncome" || baseName == "NetIncome" || baseName == "OperatingCashFlow"
 				if value > 0 || (isProfit && value != 0) {
 					applyXBRLValue(&data, found, baseName, value)
 				}
@@ -427,8 +464,15 @@ func parseLocalFile(filePath string) (FinancialData, error) {
 
 		matches := pattern.FindStringSubmatch(contentStr)
 		if len(matches) >= 2 {
+			if baseName == "DividendPerShare" {
+				if dps, err := strconv.ParseFloat(matches[1], 64); err == nil && dps > 0 {
+					data.DividendPerShare = dps
+					found["DividendPerShare"] = true
+				}
+				continue
+			}
 			value, _ := strconv.ParseInt(matches[1], 10, 64)
-			isProfit := baseName == "OperatingIncome" || baseName == "OrdinaryIncome" || baseName == "NetIncome"
+			isProfit := baseName == "OperatingIncome" || baseName == "OrdinaryIncome" || baseName == "NetIncome" || baseName == "OperatingCashFlow"
 			if value > 0 || (isProfit && value != 0) {
 				applyXBRLValue(&data, found, baseName, value)
 			}
