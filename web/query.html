@@ -167,7 +167,7 @@
                 <label class="file-input-label" for="db-file">📁 ローカルファイルを選択 (.db / .db.gz)</label>
                 <input type="file" id="db-file" accept=".db,.gz,.sqlite">
                 <span class="or">または</span>
-                <button class="btn btn-primary" id="load-release">📥 GitHub Release から自動取得</button>
+                <button class="btn btn-primary" id="load-release">📥 同一オリジンから自動取得 (data/xbrl.db.gz)</button>
             </div>
             <div id="db-status" class="status info">DBが未読込です。ファイルを選択してください。</div>
         </div>
@@ -231,29 +231,18 @@
             await loadDBFromBuffer(await file.arrayBuffer(), file.name);
         });
 
-        // GitHub Release から自動取得
+        // 同一オリジンから DB を取得 (CORS回避: GitHubのreleases/downloadは外部originから弾かれるため)
+        // localhost: Go server の /data/xbrl.db.gz ハンドラ経由
+        // GitHub Pages: deploy-pages.yml が public/data/xbrl.db.gz にコピー
         document.getElementById('load-release').addEventListener('click', async () => {
             try {
-                setStatus('info', '📥 最新リリース情報を取得中...');
-                const repo = window.location.hostname.includes('github.io')
-                    ? window.location.pathname.split('/')[1]  // github.io/<repo>/
-                    : 'my_analysis';
-                const owner = window.location.hostname.includes('github.io')
-                    ? window.location.hostname.split('.')[0]
-                    : 'c3drive';
-                const apiRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`);
-                if (!apiRes.ok) throw new Error('リリース取得失敗: ' + apiRes.status);
-                const release = await apiRes.json();
-                const xbrlAsset = release.assets.find(a => a.name === 'xbrl.db.gz');
-                if (!xbrlAsset) throw new Error('xbrl.db.gz が見つかりません');
-
-                setStatus('info', `📥 ${release.tag_name} から xbrl.db.gz をダウンロード中... (${(xbrlAsset.size/1024/1024).toFixed(1)}MB)`);
-                const dlRes = await fetch(xbrlAsset.browser_download_url);
-                if (!dlRes.ok) throw new Error('DLエラー: ' + dlRes.status);
+                setStatus('info', '📥 data/xbrl.db.gz を取得中...');
+                const dlRes = await fetch('data/xbrl.db.gz');
+                if (!dlRes.ok) throw new Error('取得失敗: HTTP ' + dlRes.status);
                 const buf = await dlRes.arrayBuffer();
                 await loadDBFromBuffer(buf, 'xbrl.db.gz');
             } catch (err) {
-                setStatus('error', '❌ ' + err.message);
+                setStatus('error', '❌ ' + err.message + '<br>(localhost なら task serve 起動済みか、Pages ならデプロイ完了か確認)');
             }
         });
 

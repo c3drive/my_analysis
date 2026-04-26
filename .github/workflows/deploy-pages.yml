@@ -85,10 +85,18 @@ jobs:
 
       - name: Prepare Public Assets
         run: |
-          mkdir -p public
+          mkdir -p public/data
           cp -r web/* public/
+          # query.html (sqlite-wasm) 用に圧縮版DBを同一オリジンで配信
+          for db in xbrl.db.gz stock_price.db.gz rs.db.gz; do
+            if [ -f "data/$db" ]; then
+              cp "data/$db" "public/data/$db"
+              echo "📦 copied data/$db ($(du -h public/data/$db | cut -f1))"
+            fi
+          done
           echo "📁 Contents of public/:"
           ls -la public/
+          ls -la public/data/ 2>/dev/null || true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

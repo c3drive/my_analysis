@@ -44,6 +44,20 @@ func startServer() {
 		http.ServeFile(w, r, "./data/xbrl.db")
 	})
 
+	// query.html (sqlite-wasm) 用に圧縮版DBを同一オリジンで配信
+	http.HandleFunc("/data/xbrl.db.gz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		http.ServeFile(w, r, "./data/xbrl.db.gz")
+	})
+	http.HandleFunc("/data/stock_price.db.gz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		http.ServeFile(w, r, "./data/stock_price.db.gz")
+	})
+	http.HandleFunc("/data/rs.db.gz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		http.ServeFile(w, r, "./data/rs.db.gz")
+	})
+
 	http.HandleFunc("/api/stocks", func(w http.ResponseWriter, r *http.Request) {
 		db, err := openServerDB()
 		if err != nil {
