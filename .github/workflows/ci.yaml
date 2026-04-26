@@ -21,6 +21,9 @@ jobs:
       - name: Build
         run: go build -v ./...
 
+      - name: Unit tests
+        run: go test -v ./...
+
       - name: Run Mock Test
         run: |
           mkdir -p data
