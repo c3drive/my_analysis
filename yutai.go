@@ -11,12 +11,12 @@ import (
 
 // YutaiRecord は data/yutai.csv の1行を表す
 type YutaiRecord struct {
-	Code           string `json:"Code"`
-	YutaiValueYen  int64  `json:"YutaiValueYen"`  // 年間優待換算額 (円)
-	MinShares      int64  `json:"MinShares"`      // 必要最低株数 (通常 100)
-	HoldMonths     int    `json:"HoldMonths"`     // 長期保有特典の発動月数 (なければ 0)
-	Category       string `json:"Category"`       // 食品/外食/QUO/自社製品/カタログ/その他
-	Note           string `json:"Note"`
+	Code          string `json:"Code"`
+	YutaiValueYen int64  `json:"YutaiValueYen"` // 年間優待換算額 (円)
+	MinShares     int64  `json:"MinShares"`     // 必要最低株数 (通常 100)
+	HoldMonths    int    `json:"HoldMonths"`    // 長期保有特典の発動月数 (なければ 0)
+	Category      string `json:"Category"`      // 食品/外食/QUO/自社製品/カタログ/その他
+	Note          string `json:"Note"`
 }
 
 // loadYutaiCSV は data/yutai.csv を読み込んで code → YutaiRecord のマップを返す

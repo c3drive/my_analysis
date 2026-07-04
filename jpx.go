@@ -14,7 +14,8 @@ import (
 // data_j.xls をダウンロードし、CSV (UTF-8) に変換したファイルを指定する
 //
 // 期待する CSV フォーマット (1行目はヘッダ):
-//   日付, コード, 銘柄名, 市場・商品区分, 33業種コード, 33業種区分, 17業種コード, 17業種区分, 規模コード, 規模区分
+//
+//	日付, コード, 銘柄名, 市場・商品区分, 33業種コード, 33業種区分, 17業種コード, 17業種区分, 規模コード, 規模区分
 func importJPX(filePath string) {
 	if filePath == "" {
 		log.Fatalf("-file=path/to/jpx.csv が必要 (JPX data_j.xls を CSV 変換したもの)")

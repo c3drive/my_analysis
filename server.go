@@ -641,12 +641,12 @@ func startServer() {
 			Volume int64   `json:"volume"`
 		}
 		type SectorEntry struct {
-			Sector       string   `json:"sector"`
-			MemberCount  int      `json:"memberCount"`
-			RSMedian     float64  `json:"rsMedian"`
-			RSMomentum   float64  `json:"rsMomentum"` // 30日前→現在の中央値変化
-			Score        float64  `json:"score"`
-			Members      []Member `json:"members"`
+			Sector      string   `json:"sector"`
+			MemberCount int      `json:"memberCount"`
+			RSMedian    float64  `json:"rsMedian"`
+			RSMomentum  float64  `json:"rsMomentum"` // 30日前→現在の中央値変化
+			Score       float64  `json:"score"`
+			Members     []Member `json:"members"`
 		}
 
 		// 1. 当日の最新 RS を一括取得
@@ -836,10 +836,10 @@ func startServer() {
 			PER             *float64    `json:"PER"`
 			PBR             *float64    `json:"PBR"`
 			EquityRatio     *float64    `json:"EquityRatio"`
-			FCFYield        *float64    `json:"FCFYield"`        // 営業益/時価総額 * 100 (%)
-			EVEBIT          *float64    `json:"EVEBIT"`          // (時価+負債-現金) / 営業益
-			FScore          int         `json:"FScore"`          // 0-9
-			FAvailable      int         `json:"FAvailable"`      // 計算可能だった項目数
+			FCFYield        *float64    `json:"FCFYield"`   // 営業益/時価総額 * 100 (%)
+			EVEBIT          *float64    `json:"EVEBIT"`     // (時価+負債-現金) / 営業益
+			FScore          int         `json:"FScore"`     // 0-9
+			FAvailable      int         `json:"FAvailable"` // 計算可能だった項目数
 			FDetail         PiotroskiF9 `json:"FDetail"`
 			MarketSegment   string      `json:"MarketSegment,omitempty"`
 			Sector33        string      `json:"Sector33,omitempty"`
@@ -1044,10 +1044,10 @@ func startServer() {
 			MarketCap        int64    `json:"MarketCap"`
 			NetIncome        int64    `json:"NetIncome"`
 			DividendPerShare float64  `json:"DividendPerShare"`
-			DividendYield    *float64 `json:"DividendYield"`    // DPS / 株価 * 100
-			PayoutRatio      *float64 `json:"PayoutRatio"`      // DPS / EPS * 100
-			NoCutYears       int      `json:"NoCutYears"`       // 連続非減配年数
-			DPSHistory       int      `json:"DPSHistory"`       // 過去年数 (連続性判定の母数)
+			DividendYield    *float64 `json:"DividendYield"` // DPS / 株価 * 100
+			PayoutRatio      *float64 `json:"PayoutRatio"`   // DPS / EPS * 100
+			NoCutYears       int      `json:"NoCutYears"`    // 連続非減配年数
+			DPSHistory       int      `json:"DPSHistory"`    // 過去年数 (連続性判定の母数)
 			EPS              *float64 `json:"EPS"`
 			ROE              *float64 `json:"ROE"`
 			PER              *float64 `json:"PER"`
@@ -1285,16 +1285,16 @@ func startServer() {
 			Name             string   `json:"Name"`
 			Score            float64  `json:"Score"`
 			LastPrice        float64  `json:"LastPrice"`
-			MinInvestment    int64    `json:"MinInvestment"`     // 株価 × 必要株数
+			MinInvestment    int64    `json:"MinInvestment"` // 株価 × 必要株数
 			MinShares        int64    `json:"MinShares"`
 			DividendPerShare float64  `json:"DividendPerShare"`
 			YutaiValueYen    int64    `json:"YutaiValueYen"`
 			HoldMonths       int      `json:"HoldMonths"`
 			Category         string   `json:"Category"`
 			Note             string   `json:"Note"`
-			DividendYield    *float64 `json:"DividendYield"`     // 配当利回り (DPS / 株価 * 100)
-			YutaiYield       *float64 `json:"YutaiYield"`        // 優待利回り (yutai / 投資額 * 100)
-			TotalYield       *float64 `json:"TotalYield"`        // 配当+優待 利回り (%)
+			DividendYield    *float64 `json:"DividendYield"` // 配当利回り (DPS / 株価 * 100)
+			YutaiYield       *float64 `json:"YutaiYield"`    // 優待利回り (yutai / 投資額 * 100)
+			TotalYield       *float64 `json:"TotalYield"`    // 配当+優待 利回り (%)
 			Sector33         string   `json:"Sector33,omitempty"`
 			MarketSegment    string   `json:"MarketSegment,omitempty"`
 		}

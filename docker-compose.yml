@@ -5,7 +5,7 @@ services:
       - .:/app
       - ${HOME}/.config/gh:/root/.config/gh  # ホストの gh 認証情報をマウント (upload-db タスク用)
     ports:
-      - "8080:8080"  # ホストの8080をコンテナの8080に繋ぐ
+      - "127.0.0.1:8080:8080"  # ローカル開発専用のためループバックのみにバインド
     tty: true
     stdin_open: true
     environment:

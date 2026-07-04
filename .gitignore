@@ -26,10 +26,10 @@ vendor/
 Thumbs.db
 
 # --- Database ---
-# SQLiteの本体は管理対象に含めるが、一時ファイルは除外する
+# DBファイルは全てgit管理外（GitHub Releasesが永続ストレージ）
+# 手動メンテのyutai.csvのみ追跡する
 !data/
 data/*
-!data/stock_data.db
 !data/yutai.csv
 *.db-shm
 *.db-wal

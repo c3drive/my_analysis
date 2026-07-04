@@ -18,13 +18,13 @@ func mustDate(t *testing.T, s string) time.Time {
 func TestCalcMetrics_BasicRatios(t *testing.T) {
 	// 株価1000円, 1000万株, 純利益1億, 純資産10億, 総資産20億
 	m := calcMetrics(
-		1000,                 // lastPrice
-		10_000_000,           // sharesIssued
-		100_000_000,          // netIncome
-		1_000_000_000,        // netAssets
-		2_000_000_000,        // totalAssets
-		800_000_000,          // currentAssets
-		800_000_000,          // liabilities
+		1000,          // lastPrice
+		10_000_000,    // sharesIssued
+		100_000_000,   // netIncome
+		1_000_000_000, // netAssets
+		2_000_000_000, // totalAssets
+		800_000_000,   // currentAssets
+		800_000_000,   // liabilities
 	)
 
 	wantMC := int64(10_000_000_000)

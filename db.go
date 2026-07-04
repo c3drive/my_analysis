@@ -60,12 +60,12 @@ func initXbrlDB() (*sql.DB, error) {
 		"ALTER TABLE stocks ADD COLUMN inventories INTEGER",
 		"ALTER TABLE stocks ADD COLUMN non_current_liabilities INTEGER",
 		"ALTER TABLE stocks ADD COLUMN shareholders_equity INTEGER",
-		"ALTER TABLE stocks ADD COLUMN market_segment TEXT",          // JPX: プライム/スタンダード/グロース
-		"ALTER TABLE stocks ADD COLUMN sector_33 TEXT",               // JPX: 33業種分類
-		"ALTER TABLE stocks ADD COLUMN sector_17 TEXT",               // JPX: 17業種分類
-		"ALTER TABLE stocks ADD COLUMN operating_cash_flow INTEGER",  // Phase 1b: F-Score用 営業CF
-		"ALTER TABLE stocks ADD COLUMN gross_profit INTEGER",         // Phase 1b: F-Score用 売上総利益
-		"ALTER TABLE stocks ADD COLUMN dividend_per_share REAL",      // Phase 2: 高配当用 1株配当
+		"ALTER TABLE stocks ADD COLUMN market_segment TEXT",         // JPX: プライム/スタンダード/グロース
+		"ALTER TABLE stocks ADD COLUMN sector_33 TEXT",              // JPX: 33業種分類
+		"ALTER TABLE stocks ADD COLUMN sector_17 TEXT",              // JPX: 17業種分類
+		"ALTER TABLE stocks ADD COLUMN operating_cash_flow INTEGER", // Phase 1b: F-Score用 営業CF
+		"ALTER TABLE stocks ADD COLUMN gross_profit INTEGER",        // Phase 1b: F-Score用 売上総利益
+		"ALTER TABLE stocks ADD COLUMN dividend_per_share REAL",     // Phase 2: 高配当用 1株配当
 	}
 	for _, stmt := range alterStatements {
 		db.Exec(stmt)

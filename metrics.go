@@ -176,17 +176,17 @@ func yoyPctInt(current, prior int64) *float64 {
 
 // PiotroskiF9 は Piotroski F-Score (9点満点) の内訳
 type PiotroskiF9 struct {
-	Score          int  `json:"Score"`           // 0-9
-	Available      int  `json:"Available"`       // 計算可能だった項目数 (0-9)
-	ROAPositive    bool `json:"ROAPositive"`     // 1. ROA > 0
-	ROAImproved    bool `json:"ROAImproved"`     // 2. ΔROA > 0
-	CFOPositive    bool `json:"CFOPositive"`     // 3. CFO > 0
-	AccrualsGood   bool `json:"AccrualsGood"`    // 4. CFO > NetIncome
-	LeverageDown   bool `json:"LeverageDown"`    // 5. Δ長期負債率 < 0
-	CurrentRatioUp bool `json:"CurrentRatioUp"`  // 6. Δ流動比率 > 0
-	NoDilution     bool `json:"NoDilution"`      // 7. 希薄化なし (発行済株式数 ≤ 前期)
-	GrossMarginUp  bool `json:"GrossMarginUp"`   // 8. Δ粗利率 > 0
-	AssetTurnUp    bool `json:"AssetTurnUp"`     // 9. Δ資産回転率 > 0
+	Score          int  `json:"Score"`          // 0-9
+	Available      int  `json:"Available"`      // 計算可能だった項目数 (0-9)
+	ROAPositive    bool `json:"ROAPositive"`    // 1. ROA > 0
+	ROAImproved    bool `json:"ROAImproved"`    // 2. ΔROA > 0
+	CFOPositive    bool `json:"CFOPositive"`    // 3. CFO > 0
+	AccrualsGood   bool `json:"AccrualsGood"`   // 4. CFO > NetIncome
+	LeverageDown   bool `json:"LeverageDown"`   // 5. Δ長期負債率 < 0
+	CurrentRatioUp bool `json:"CurrentRatioUp"` // 6. Δ流動比率 > 0
+	NoDilution     bool `json:"NoDilution"`     // 7. 希薄化なし (発行済株式数 ≤ 前期)
+	GrossMarginUp  bool `json:"GrossMarginUp"`  // 8. Δ粗利率 > 0
+	AssetTurnUp    bool `json:"AssetTurnUp"`    // 9. Δ資産回転率 > 0
 }
 
 // calcPiotroskiF9 は通期決算 (有報) の最新2期を比較して F-Score を算出する

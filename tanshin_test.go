@@ -13,7 +13,7 @@ func TestParseJPNumber(t *testing.T) {
 		{"△500", -500},
 		{"▲1,000", -1000},
 		{"  500  ", 500},
-		{"abc", 0},      // パース不可は 0
+		{"abc", 0}, // パース不可は 0
 		{"", 0},
 	}
 	for _, c := range cases {
