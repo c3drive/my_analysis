@@ -107,7 +107,7 @@ go run . -mode=batch -from=2025-04-01 -to=2026-02-22
 - `/api/financials/{code}` — 報告書ごとの財務時系列
 - `/api/disclosures/{code}` — TDNET適時開示一覧
 - `/api/oneil-ranking` — オニール成長株スクリーニング
-- `/api/cycle-ranking` / `/api/dividend-ranking` / `/api/yutai-ranking` — シクリカル / 高配当 / 株主優待ランキング
+- `/api/value-ranking` / `/api/cycle-ranking` / `/api/dividend-ranking` / `/api/yutai-ranking` — バリュー / シクリカル / 高配当 / 株主優待ランキング
 - `/api/market-index/{code}` — マーケット天井検出データ
 - `/api/available-codes` — 有効な証券コード一覧
 - `/xbrl.db` — SQLiteファイル直接ダウンロード
