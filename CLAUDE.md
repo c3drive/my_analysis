@@ -34,12 +34,20 @@ go run . -mode=batch -from=2025-04-01 -to=2026-02-22
 
 ## Architecture
 
-### ファイル構成（単一 main パッケージ、計約5,900行）
+### ファイル構成（単一 main パッケージ、計約6,000行。1ファイル=1ドメインを維持すること）
 
 | ファイル | 役割 |
 |---------|------|
 | `main.go` (173) | 型定義・エントリポイント・モード分岐 |
-| `server.go` (1787) | HTTPサーバー・全APIハンドラ・export-json。**最大ファイル、肥大傾向** |
+| `server.go` (73) | サーバー起動・静的配信・DB配布ルート・ハンドラ登録 |
+| `handlers_stocks.go` (383) | 基本データAPI（stocks / prices / rs / stocks-as-of / available-codes） |
+| `handlers_detail.go` (157) | 銘柄詳細API（financials / disclosures / market-index） |
+| `handlers_oneil.go` (238) | オニール成長株ランキング |
+| `handlers_cycle.go` (199) | サイクル投資（業種別RS）ランキング |
+| `handlers_value.go` (225) | バリュー（グレアム + Piotroski F9）ランキング |
+| `handlers_dividend.go` (243) | 高配当ランキング |
+| `handlers_yutai.go` (204) | 株主優待実質利回りランキング |
+| `export.go` (156) | GitHub Pages用 stocks.json 出力（export-json モード） |
 | `prices.go` (502) | 株価取得（Stooq → Yahoo Finance フォールバック）・RS計算 |
 | `xbrl.go` (493) | XBRLパース（正規表現ベース）・タグフォールバック |
 | `tanshin.go` (491) | 決算短信PDFパース（pdftotext → 正規表現） |
